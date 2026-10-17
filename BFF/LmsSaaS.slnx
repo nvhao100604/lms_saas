@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="LmsSaaS.Api/LmsSaaS.Api.csproj" />
+  <Project Path="LmsSaaS.Core/LmsSaaS.Core.csproj" />
+  <Project Path="LmsSaaS.Infrastructure/LmsSaaS.Infrastructure.csproj" />
+  <Project Path="LmsSaaS.UnitTests/LmsSaaS.UnitTests.csproj" />
+</Solution>

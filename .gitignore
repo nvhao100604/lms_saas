@@ -1,0 +1,40 @@
+# ==========================================
+# 1. .NET / VISUAL STUDIO (Thư mục BFF)
+# ==========================================
+.vs/
+**/[Bb]in/
+**/[Oo]bj/
+**/out/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Chặn file chứa Connection String thật của Supabase trong .NET
+**/appsettings.Development.json
+**/appsettings.Local.json
+
+# ==========================================
+# 2. NEXT.JS / NODE (Thư mục client)
+# ==========================================
+**/node_modules/
+**/.next/
+**/dist/
+**/build/
+next-env.d.ts
+*.tsbuildinfo
+
+# Chặn các file biến môi trường
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env*.example
+
+# ==========================================
+# 3. AI AGENT & HỆ ĐIỀU HÀNH
+# ==========================================
+.agent/
+.AGENT.md
+**/AGENTS.md
+.DS_Store
+Thumbs.db
