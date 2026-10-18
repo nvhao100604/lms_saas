@@ -85,3 +85,59 @@ Tài liệu này ghi lại toàn bộ lịch sử các phiên làm việc, nhữ
 * Xây dựng tiếp các common UI components còn lại (`Input`, `Card`, `Modal`, `Badge`...) tại `src/components/common/`.
 * Thiết kế App Shell Layout cho ứng dụng LMS (Sidebar điều hướng, Header Bar, User Menu).
 
+---
+
+## [2026-10-18] Triển khai Nền tảng Backend BFF (.NET 10, Multi-tenancy, JWT & Database Schema)
+
+### Mục tiêu trong phiên làm việc
+* Triển khai toàn bộ tầng Core Domain, Entities, Enums và Common Interface theo thiết kế ERD.
+* Cấu hình DbContext, kết nối Supabase PostgreSQL và thiết lập cơ chế đa khách thuê (Multi-tenancy).
+* Tách biệt thực thể gói cước `SubscriptionPlan` độc lập, sinh EF Migration và cập nhật Database.
+* Xây dựng luồng xác thực Custom JWT scoped theo Tenant, Options Pattern (`IOptions<JwtOptions>`), Tenant Resolution Middleware và AuthController.
+* Thiết lập bộ Unit Test toàn diện cho Data Layer, Service Layer và Middleware Layer (13/13 tests pass).
+
+### Các công việc đã thực hiện
+1. **Khởi tạo Domain Model & Entities (`LmsSaaS.Core`)**:
+   - Tạo interface đa khách thuê `ITenantEntity` (`TenantId`).
+   - Định nghĩa các Enums: `RoleInTenant`, `ClassStatus`, `TuitionStatus`, `AttendanceStatus`.
+   - Tạo toàn bộ 12 entities: `Tenant`, `User`, `TenantMember`, `Course`, `Class`, `ClassSession`, `Enrollment`, `Attendance`, `ClassMaterial`, `Quiz`, `QuizSubmission`, `SubscriptionPlan`.
+   - Tuân thủ nghiêm ngặt chuẩn C# 12+: File-scoped namespace, using đầy đủ, tách mỗi class một file, không constructor thủ công, khởi tạo giá trị mặc định cho thuộc tính.
+2. **Cấu hình EF Core & Multi-tenancy (`LmsSaaS.Infrastructure`)**:
+   - Tạo `AppDbContext` đăng ký 12 `DbSet` tương ứng.
+   - Cơ chế Reflection tự động áp dụng `HasQueryFilter` lọc dữ liệu theo `CurrentTenantId` cho mọi entity kế thừa `ITenantEntity`.
+   - Cấu hình Unique Indexes: `Tenant.Slug`, `User.Email`, `TenantMember(TenantId, UserId)`, `Enrollment(ClassId, StudentId)`, `SubscriptionPlan.Code`.
+   - Cấu hình cột kiểu PostgreSQL JSONB cho `QuestionsJson` và `AnswersJson`.
+   - Cấu hình độ chính xác số thực chuẩn `numeric` (`TuitionFee`, `Score`, `Price`).
+   - Thiết lập `DeleteBehavior.Restrict` cho toàn bộ các khóa ngoại liên quan tới `User` để tránh cascade vòng.
+3. **Tách riêng bảng SubscriptionPlans & Quota Management**:
+   - Tạo thực thể hệ thống `SubscriptionPlan` độc lập, tách các giới hạn `MaxClassesLimit`, `MaxStudentsPerClass` ra khỏi `Tenant`.
+   - Cập nhật quan hệ 1-N giữa `SubscriptionPlan` và `Tenant` (`SubscriptionPlanId`).
+   - Tạo migration `AddSubscriptionPlansTable`, bổ sung bước nạp sẵn 2 gói hệ thống (`FREE` và `PRO`) và chuyển đổi dữ liệu an toàn.
+   - Chạy `dotnet ef database update` áp dụng thành công lên Supabase PostgreSQL.
+   - Cập nhật `DbSeeder` tự động khởi tạo dữ liệu mẫu cho hệ thống.
+4. **Custom Tenant-Scoped JWT Authentication & Security Middleware**:
+   - Định nghĩa `JwtOptions` theo Options Pattern và đăng ký qua `services.Configure<JwtOptions>`.
+   - Triển khai `ICurrentTenantService` và `CurrentTenantService` lưu trữ ngữ cảnh khách thuê (`TenantId`, `TenantSlug`, `UserId`, `Role`).
+   - Triển khai `IJwtService` và `JwtService` sinh Tenant-Scoped JWT ký HMAC-SHA256 chứa 5 claims bắt buộc.
+   - Tạo `TenantResolutionMiddleware`: kiểm tra header `X-Tenant-Slug`, chặn 403 Forbidden ngay lập tức nếu lệch claim token; tự động nạp ngữ cảnh vào `ICurrentTenantService`.
+   - Cấu hình pipeline chuẩn trong `Program.cs` (`UseAuthentication` -> `TenantResolutionMiddleware` -> `UseAuthorization`).
+   - Tạo `AuthController` với 2 endpoints: `POST /api/auth/login` và `POST /api/auth/select-tenant`.
+5. **Kiểm thử tự động (Unit Tests)**:
+   - Xây dựng 13 bài unit test bao phủ toàn bộ:
+     + 8 tests trong `DbContextModelTests` (12 entities, ITenantEntity, unique indexes, jsonb, precision, restrict delete, query filter isolation).
+     + 2 tests trong `JwtServiceTests` (kiểm tra Options Pattern, sinh token, claims, chữ ký).
+     + 3 tests trong `TenantResolutionMiddlewareTests` (chặn lệch slug 403, trích xuất ngữ cảnh, unauthenticated pass-through).
+   - Kiểm tra `dotnet build` đạt 0 Warning(s), 0 Error(s).
+   - Kiểm tra `dotnet test` đạt 13/13 Passed (100%).
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Multi-tenancy by Isolation (Row-Level Security / Global Query Filter)**:
+  - Phân tách dữ liệu tự động ở mức ORM thông qua `ITenantEntity` và Reflection, giúp lập trình viên không cần viết điều kiện `Where(x => x.TenantId == ...)` thủ công ở từng query.
+  - Các bảng dùng chung cấp hệ thống (`Tenant`, `User`, `SubscriptionPlan`) không kế thừa `ITenantEntity` và không bị ảnh hưởng bởi bộ lọc này.
+* **Tenant-Scoped JWT + Defense in Depth**:
+  - Token không chỉ định danh người dùng mà còn gắn chặt với ngữ cảnh của một trung tâm cụ thể.
+  - Middleware đóng vai trò chốt chặn vòng ngoài (Security Gatekeeper): đối chiếu giữa request header và token claim, ngăn chặn triệt để nguy cơ tấn công IDOR hoặc nhầm lẫn ngữ cảnh khách thuê.
+* **Options Pattern (`IOptions<T>`)**:
+  - Tuân thủ nguyên tắc Clean Architecture, tách biệt cấu hình và business logic, hỗ trợ type-safety và dễ dàng unit test không cần phụ thuộc vào `IConfiguration`.
+
+

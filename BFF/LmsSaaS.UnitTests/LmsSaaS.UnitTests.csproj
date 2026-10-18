@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LmsSaaS.Core\LmsSaaS.Core.csproj" />
+    <ProjectReference Include="..\LmsSaaS.Infrastructure\LmsSaaS.Infrastructure.csproj" />
+    <ProjectReference Include="..\LmsSaaS.Api\LmsSaaS.Api.csproj" />
   </ItemGroup>
 
 </Project>

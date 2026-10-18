@@ -8,9 +8,9 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 
 | Trạng thái | Số lượng | Tỷ lệ |
 | :--- | :--- | :--- |
-| **Đã hoàn thành (Done)** | 4 | 100% (Giai đoạn khởi tạo & Hạ tầng) |
+| **Đã hoàn thành (Done)** | 7 | 100% (Giai đoạn khởi tạo, Hạ tầng & Backend Auth/DB) |
 | **Đang tiến hành (In Progress)** | 0 | 0% |
-| **Kế hoạch sắp tới (Todo)** | 4 | - |
+| **Kế hoạch sắp tới (Todo)** | 2 | - |
 
 ---
 
@@ -54,6 +54,34 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
   * Tạo `client/.env.example` và `.editorconfig` đồng bộ định dạng mã nguồn tại Root.
 * **Người thực hiện**: AI Agent & User.
 
+### [2026-10-18] Triển khai Backend Core & Multi-tenancy Database Schema (BFF .NET)
+* **Mô tả**: Xây dựng toàn bộ 11 thực thể khởi đầu, cấu hình DbContext PostgreSQL Supabase và tự động hóa bộ lọc đa khách thuê (`ITenantEntity`).
+* **Kết quả**:
+  * Tạo 11 entities, 5 enums và interface `ITenantEntity` tuân thủ nghiêm ngặt C# 12+.
+  * Cấu hình DbContext: reflection auto query filter theo `CurrentTenantId`, PostgreSQL JSONB, độ chính xác numeric, restrict delete cho quan hệ User.
+  * Tạo 6 bài unit tests ban đầu kiểm định toàn diện model mapping và isolation logic.
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-18] Tách thực thể SubscriptionPlan độc lập & Áp dụng Migration Supabase
+* **Mô tả**: Tách rời quota giới hạn (`MaxClassesLimit`, `MaxStudentsPerClass`) ra khỏi `Tenant` thành bảng hệ thống `SubscriptionPlan`.
+* **Kết quả**:
+  * Tạo entity `SubscriptionPlan` (Code, Name, Price, Quotas), bỏ enum trùng tên tránh lỗi CS0104.
+  * Thiết lập quan hệ 1-N `SubscriptionPlan` -> `Tenant` với `OnDelete(DeleteBehavior.Restrict)`.
+  * Tạo migration `AddSubscriptionPlansTable`, nạp sẵn 2 gói hệ thống (`FREE`, `PRO`) và migrate an toàn dữ liệu Tenant cũ.
+  * Cập nhật schema thành công lên cơ sở dữ liệu Supabase PostgreSQL.
+  * Cập nhật `DbSeeder` tự động seed gói cước và dữ liệu mẫu.
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-18] Triển khai Custom Tenant-Scoped JWT Authentication & Security Middleware
+* **Mô tả**: Xây dựng hệ thống cấp phát token JWT theo Options Pattern, Middleware chặn truy cập chéo và AuthController.
+* **Kết quả**:
+  * Định nghĩa `JwtOptions` (Section `"Jwt"`), cấu hình `AddJwtBearer` qua Options Pattern.
+  * Triển khai `JwtService` sinh Tenant-Scoped JWT HMAC-SHA256 với 5 claims: `NameIdentifier`, `Email`, `Role`, `tenant_id`, `tenant_slug`.
+  * Triển khai `TenantResolutionMiddleware` đối chiếu `X-Tenant-Slug` và claim token, ngắt 403 Forbidden nếu lệch; nạp ngữ cảnh vào `ICurrentTenantService`.
+  * Tạo `AuthController` với endpoints `/api/auth/login` và `/api/auth/select-tenant`.
+  * Bộ unit test đạt 13/13 tests pass (100%), biên dịch 0 error, 0 warning.
+* **Người thực hiện**: AI Agent & User.
+
 ---
 
 ## 3. TÍNH NĂNG ĐANG TIẾN HÀNH (IN PROGRESS)
@@ -69,9 +97,10 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 - [ ] Định nghĩa Design Tokens (Theme colors, Spacing, Typography) chuẩn theo `ui-ux-pro-max`.
 
 ### Giai đoạn 2: Tích hợp Xác thực (Authentication)
-- [ ] Màn hình Đăng nhập (Sign In) & Đăng ký (Sign Up).
-- [ ] Tích hợp API xác thực từ Backend (BFF .NET) / Supabase.
-- [ ] Quản lý trạng thái phiên đăng nhập (JWT token, middleware bảo vệ route).
+- [x] Tích hợp API xác thực từ Backend (BFF .NET) / Supabase.
+- [x] Quản lý trạng thái phiên đăng nhập Backend (JWT token, middleware bảo vệ tenant).
+- [ ] Màn hình Đăng nhập (Sign In) & Đăng ký (Sign Up) trên Client.
+- [ ] Client Auth context/middleware quản lý token lưu trữ và route protection.
 
 ### Giai đoạn 3: Phân hệ Quản trị & Khóa học (LMS Core)
 - [ ] Dashboard tổng quan (Thống kê học viên, doanh thu, khóa học).
