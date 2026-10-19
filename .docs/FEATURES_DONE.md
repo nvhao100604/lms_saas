@@ -8,9 +8,9 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 
 | Trạng thái | Số lượng | Tỷ lệ |
 | :--- | :--- | :--- |
-| **Đã hoàn thành (Done)** | 7 | 100% (Giai đoạn khởi tạo, Hạ tầng & Backend Auth/DB) |
+| **Đã hoàn thành (Done)** | 17 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System) |
 | **Đang tiến hành (In Progress)** | 0 | 0% |
-| **Kế hoạch sắp tới (Todo)** | 2 | - |
+| **Kế hoạch sắp tới (Todo)** | 0 | - |
 
 ---
 
@@ -78,8 +78,145 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
   * Định nghĩa `JwtOptions` (Section `"Jwt"`), cấu hình `AddJwtBearer` qua Options Pattern.
   * Triển khai `JwtService` sinh Tenant-Scoped JWT HMAC-SHA256 với 5 claims: `NameIdentifier`, `Email`, `Role`, `tenant_id`, `tenant_slug`.
   * Triển khai `TenantResolutionMiddleware` đối chiếu `X-Tenant-Slug` và claim token, ngắt 403 Forbidden nếu lệch; nạp ngữ cảnh vào `ICurrentTenantService`.
-  * Tạo `AuthController` với endpoints `/api/auth/login` và `/api/auth/select-tenant`.
-  * Bộ unit test đạt 13/13 tests pass (100%), biên dịch 0 error, 0 warning.
+### [2026-10-19] Triển khai Xác thực BFF Cookie, Chọn Trung tâm & Route Handlers
+* **Mô tả**: Xây dựng kiến trúc BFF cho Next.js Client, lưu trữ token an toàn trong HttpOnly Cookie phía server, hỗ trợ chọn trung tâm 2 giai đoạn và chuyển hướng an toàn.
+* **Kết quả**:
+  * Tạo Route Handlers `/api/auth/login-proxy` và `/api/auth/set-session`.
+  * Ghi nhận cookie `access_token` với `httpOnly: true, sameSite: 'lax', path: '/', maxAge: 14400`.
+  * Xây dựng giao diện Login 2 giai đoạn (`/login`) với tự động chọn khi chỉ có 1 trung tâm và giao diện chọn trung tâm chuẩn SaaS.
+  * Xây dựng Server Component Dashboard mẫu theo slug `/[tenantSlug]/dashboard`.
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-19] Triển khai Next.js Edge Middleware bảo vệ Route &[tenantSlug]/* & Redux Toolkit i18n
+* **Mô tả**: Thiết lập `middleware.ts` bảo vệ toàn diện các dynamic routes của trung tâm, giải mã nhẹ nhàng Base64 JWT Payload trên Edge Runtime, chặn truy cập chéo và hỗ trợ song ngữ Redux Toolkit.
+* **Kết quả**:
+  * Tạo `src/middleware.ts` giải mã Base64URL JWT không phụ thuộc thư viện ngoài, kiểm tra `exp`, chặn context mismatch giữa URL và `tenant_slug`.
+  * Bổ sung điều hướng quay lại (`redirectPath`) trên trang Login.
+  * Cài đặt và cấu hình Redux Toolkit (`@reduxjs/toolkit`, `react-redux`), tạo `languageSlice`, `StoreProvider` và component dùng chung `LanguageSwitcher`.
+  * Đồng bộ hằng số định tuyến trong `src/constants/routes.ts`, loại bỏ hoàn toàn hardcode route strings.
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-19] Triển khai Refresh Token Rotation theo Ngữ cảnh Trung tâm & OpenAPI Transformers
+* **Mô tả**: Xây dựng cơ chế Refresh Token Rotation gắn chặt với `ITenantEntity`, nâng cấp endpoint xác thực trong .NET 10 BFF và cấu hình Swagger UI tích hợp nút Authorize JWT cùng Header `X-Tenant-Slug` tự động bằng OpenAPI Transformers thuần (không dùng Scalar).
+* **Kết quả**:
+  * Cập nhật `JwtOptions` với `RefreshTokenExpiryDays: 7` áp dụng Options Pattern.
+  * Tạo thực thể `RefreshToken` kế thừa `ITenantEntity`, lưu vết chuỗi token ngẫu nhiên 64 bytes (`RandomNumberGenerator`), `ExpiresAt`, `RevokedAt`, `ReplacedByToken` cùng các computed properties `IsActive`, `IsExpired`, `IsRevoked`.
+  * Cập nhật `AppDbContext` với unique index trên `Token`, khóa ngoại Cascade cho `Tenant` và Restrict cho `User`.
+  * Nâng cấp `POST /api/auth/select-tenant` sinh và lưu Refresh Token kèm Access Token; thêm mới `POST /api/auth/refresh` thực hiện xoay vòng token (rotation) với `.IgnoreQueryFilters()`; thêm `POST /api/auth/revoke` (`[Authorize]`) thu hồi token an toàn.
+  * Triển khai `BearerSecuritySchemeTransformer` (`IOpenApiDocumentTransformer`) và `TenantHeaderOperationTransformer` (`IOpenApiOperationTransformer`) nạp tự động Header `X-Tenant-Slug` (mặc định `"apex-english"`), bỏ qua các endpoint auth/health.
+  * Tạo migration EF Core `AddRefreshTokensTable` và áp dụng thành công lên Supabase PostgreSQL.
+  * Bổ sung unit tests cho `GenerateRefreshToken` và luồng rotation, 100% test case pass (21/21).
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-19] Đồng bộ Thời hạn Cookie Động (Single Source of Truth) & Silent Refresh Token Rotation trên Next.js Client
+* **Mô tả**: Thiết lập cơ chế đồng bộ thời hạn token tập trung từ Backend .NET BFF sang Next.js App Router, loại bỏ hoàn toàn hardcode `maxAge` ở Client và triển khai Silent Refresh Token Rotation tự động trong Edge Middleware.
+* **Kết quả**:
+  * Cập nhật `.NET BFF` (`AuthController`): Bổ sung `accessTokenExpiresIn` và `refreshTokenExpiresIn` (tính theo giây từ `IOptions<JwtOptions>`) trong response của cả 2 endpoints `/api/auth/select-tenant` và `/api/auth/refresh`.
+  * Cập nhật TypeScript types tại `src/types/auth.ts`: `SelectTenantResponse` và `RefreshTokenResponse` phản ánh chuẩn xác các trường thời hạn từ Backend.
+  * Cập nhật hằng số định tuyến `src/constants/routes.ts`: Bổ sung `API.AUTH.REFRESH` và `API.AUTH.LOGOUT`.
+  * Nâng cấp Route Handler `src/app/api/auth/set-session/route.ts`: Thiết lập cookie `access_token` và `refresh_token` với `maxAge` động theo `data.accessTokenExpiresIn` và `data.refreshTokenExpiresIn`.
+  * Tạo mới Route Handler `src/app/api/auth/refresh/route.ts`: Nhận yêu cầu làm mới token từ cookie, xoay vòng cặp token mới và cập nhật lại HttpOnly Cookies với thời hạn động.
+  * Tạo mới Route Handler `src/app/api/auth/logout/route.ts`: Gọi sang `.NET BFF` (`/api/auth/revoke`) thu hồi token trên Database và xóa sạch toàn bộ session cookies trên trình duyệt.
+  * Nâng cấp `src/middleware.ts`: Thực hiện Silent Refresh ngay tại Edge Middleware khi `access_token` hết hạn nhưng còn `refresh_token`, tự động xin token mới từ .NET BFF, gắn Set-Cookie với thời hạn động và cho phép người dùng tiếp tục mà không bị vỡ phiên.
+  * Tạo tiện ích `src/lib/bff-client.ts`: Hàm `fetchFromBff<T>` hỗ trợ Server Components và Server Actions tự động gắn header `Authorization: Bearer ...` và `X-Tenant-Slug`.
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-19] Thiết lập Tầng gọi API Tập trung Axios & Tích hợp SWR (Thin API Layer)
+* **Mô tả**: Xây dựng Axios Client Instance chuẩn doanh nghiệp kết hợp SWR (Stale-While-Revalidate), tự động bắt lỗi 401 với hàng đợi mutex để Silent Refresh, chuẩn hóa lỗi `AppApiError` và cung cấp Thin API Layer không cần `try-catch` thủ công.
+* **Kết quả**:
+  * Cài đặt `axios` (v1.20) và `swr` (v2.5) vào dự án `client`.
+  * Tạo `src/lib/axios.ts`: Cấu hình `baseURL`, `withCredentials: true`, Interceptor tự động gắn Header `X-Tenant-Slug`, Response Interceptor bắt 401 với hàng đợi Mutex (`failedQueue`), gọi `/api/auth/refresh` và replay request ban đầu; chuẩn hóa toàn bộ lỗi thành `AppApiError`.
+  * Tạo `src/services/exampleService.ts`: Thin Service Layer định nghĩa các thao tác CRUD mẫu (`getCourses`, `getCourseById`, `createCourse`, `updateCourse`, `deleteCourse`) hoàn toàn không cần `try-catch`.
+  * Tạo `src/hooks/useExampleCourses.ts`: Custom Hook chuẩn hóa việc lấy dữ liệu với SWR, hỗ trợ caching, tự động refetch theo params và các mutation helpers.
+  * Tạo `src/components/example/ExampleCourseList.tsx`: Component mẫu hoàn chỉnh xử lý 3 trạng thái `isLoading`, `isError`, và `data` kèm tìm kiếm, phân trang và nút revalidate SWR `mutate()`.
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-19] Triệt tiêu Hardcoded Text, Bản địa hóa Đa ngôn ngữ Tập trung (Redux i18n) & Chuẩn hóa Log/Exception 100% Tiếng Anh
+* **Mô tả**: Rà soát và loại bỏ 100% văn bản hardcoded trên toàn bộ giao diện Client, chuyển toàn bộ vào từ điển đa ngôn ngữ (`src/locales/` với TypeScript strict interfaces) phản ứng trực tiếp qua Redux state; đồng thời chuẩn hóa toàn bộ log, thông báo lỗi exception và response API ở tầng server sang tiếng Anh.
+* **Kết quả**:
+  * Mở rộng từ điển ngôn ngữ `src/locales/` (`types.ts`, `vi.ts`, `en.ts`): Bổ sung đầy đủ các schema validation (`validation`), các section `dashboard`, `courses`, `home` và các aria labels chuẩn a11y.
+  * Cập nhật `src/lib/validations/authSchema.ts`: Chuyển sang sử dụng từ điển ngôn ngữ động `createLoginSchema(t)` và `createRegisterSchema(t)` thay vì hardcode thông báo tiếng Việt.
+  * Tách và nâng cấp các Component giao diện sang Client Components kết nối Redux Store:
+    * `src/components/dashboard/DashboardView.tsx`: Thay thế toàn bộ banner, thống kê, badges, thẻ bảo mật sang `t.dashboard` và `t.common`.
+    * `src/components/home/HomeView.tsx`: Hiển thị trang chủ và điều hướng kèm `LanguageSwitcher` không hardcode text.
+    * `src/components/example/ExampleCourseList.tsx`: Kết nối `t.courses`, hỗ trợ tìm kiếm, phân trang và trạng thái rỗng/lỗi đa ngôn ngữ.
+    * `src/components/common/LanguageSwitcher.tsx`: Cập nhật aria-label và nhãn ngôn ngữ động.
+    * `src/app/(auth)/login/page.tsx`: Cập nhật aria-label đóng lỗi, ẩn/hiện mật khẩu và footer badge qua Redux `t`.
+  * Chuẩn hóa 100% thông báo lỗi / exceptions / log sang Tiếng Anh:
+    * Next.js Route Handlers (`src/app/api/auth/*`): Toàn bộ thông báo lỗi và phản hồi chuyển sang tiếng Anh.
+    * Client Utilities (`src/lib/axios.ts`, `src/lib/bff-client.ts`): Toàn bộ thông báo lỗi ngoại lệ chuyển sang tiếng Anh.
+    * .NET BFF (`AuthController.cs`, `TenantResolutionMiddleware.cs`, `OpenApi` transformers): Toàn bộ response messages và mô tả OpenAPI chuyển sang tiếng Anh.
+  * Kiểm định chất lượng: `pnpm run build` vượt qua 100% kiểm tra kiểu TypeScript/Next.js; `dotnet test` vượt qua 21/21 unit test cases.
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-19] Tối ưu hóa Toàn diện các API Route & Tầng Dịch vụ Xác thực với Axios
+* **Mô tả**: Tái cấu trúc loại bỏ hoàn toàn mã nguồn rườm rà (fetch thủ công, JSON.stringify, response.json, bắt lỗi phân mảnh) tại toàn bộ các Next.js API Route Handlers và Login Component; chuyển sang dùng Axios tập trung qua `bffClient` (Server) và `authService` (Client).
+* **Kết quả**:
+  * Nâng cấp `src/lib/bff-client.ts`: Khởi tạo `bffClient` (Axios Instance cấu hình `baseURL: ENV_CONFIG.DOTNET_API_URL`, timeout, headers), hàm chuẩn hóa lỗi `handleBffError`, và hàm `fetchFromBff<T>` hỗ trợ Server Components.
+  * Tái cấu trúc 4 Route Handlers (`src/app/api/auth/*`):
+    * `login-proxy/route.ts`: Rút gọn từ 56 dòng xuống 17 dòng, ủy quyền toàn bộ cho `bffClient.post("/api/auth/login", body)`.
+    * `set-session/route.ts`: Gọi `bffClient.post("/api/auth/select-tenant", body)` cực kỳ tinh gọn, đồng bộ Set-Cookie `maxAge` tự động.
+    * `refresh/route.ts`: Sử dụng `bffClient.post("/api/auth/refresh", { refreshToken })` kèm cơ chế dọn dẹp cookie nếu token hỏng.
+    * `logout/route.ts`: Gọi `bffClient.post("/api/auth/revoke", ...)` và xóa cookies an toàn.
+  * Tạo mới Client Service `src/services/authService.ts`: Cung cấp các hàm `login`, `setSession`, `refresh`, `logout` thông qua `api` / `axiosClient`.
+  * Cập nhật `src/app/(auth)/login/page.tsx`: Loại bỏ triệt để các khối `fetch` và `JSON.stringify` thủ công, chuyển sang gọi trực tiếp `authService.login()` và `authService.setSession()`.
+  * Hợp nhất `src/services/apiClient.ts`: Chuyển sang re-export `api` / `axiosClient` để thống nhất 1 chuẩn HTTP client duy nhất trên toàn dự án.
+  * Kiểm định: `pnpm run build` thành công trong 2.7s (0 errors), `dotnet test` đạt 21/21 passed.
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-19] Tích hợp Global SWR Provider cho Toàn bộ Ứng dụng Client
+* **Mô tả**: Thiết lập `SwrProvider` bao bọc toàn bộ cây giao diện Next.js App Router với `SWRConfig` tập trung, chuẩn hóa fetcher ngầm qua Axios, chính sách chống gọi API trùng lặp và loại trừ retry vô hạn với lỗi xác thực.
+* **Kết quả**:
+  * Tạo `src/providers/SwrProvider.tsx`:
+    * Cấu hình `fetcher` mặc định qua `api.get(url)`.
+    * Cấu hình caching tối ưu: `revalidateOnFocus: true`, `revalidateOnReconnect: true`, `dedupingInterval: 5000` (giới hạn refetch trùng lặp trong 5 giây).
+    * Bộ lọc retry thông minh (`shouldRetryOnError`): Tự động ngăn chặn retry khi gặp lỗi `401 Unauthorized`, `403 Forbidden`, `404 Not Found` để tránh nghẽn luồng auth refresh.
+    * Tích hợp logging lỗi bằng tiếng Anh ở môi trường development.
+  * Xuất chuẩn qua barrel export `src/providers/index.ts`.
+  * Bao bọc `<SwrProvider>` trực tiếp bên trong `<StoreProvider>` tại Root Layout (`src/app/layout.tsx`).
+  * Chuẩn hóa barrel export cho custom hooks tại `src/hooks/index.ts` (`useDebounce`, `useExampleCourses`).
+  * Toàn bộ mã nguồn, comments và logs đều tuân thủ 100% tiếng Anh, không chứa emoji.
+  * Kiểm định chất lượng: TypeScript `npx tsc --noEmit` đạt 0 lỗi; `pnpm run build` (Turbopack) thành công 100%; `dotnet test` đạt 21/21 passed.
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-19] Xây dựng Trọn bộ Khung Giao diện App Shell Layout cho Không gian Làm việc (Workspace)
+* **Mô tả**: Thiết lập layout App Shell hoàn chỉnh tại `client/src/app/[tenantSlug]/layout.tsx` bao bọc mọi trang làm việc của trung tâm đào tạo, phân tách rõ ràng Sidebar điều hướng, Header thao tác tập trung và vùng hiển thị nội dung cuộn độc lập.
+* **Kết quả**:
+  * Cập nhật `src/constants/routes.ts`: Bổ sung toàn diện các route `DASHBOARD`, `COURSES`, `CLASSES`, `SCHEDULE`, `ATTENDANCE` cho `ROUTES.TENANT`, triệt tiêu hardcoded URLs.
+  * Mở rộng từ điển `src/locales/` (`types.ts`, `vi.ts`, `en.ts`): Bổ sung `navigation` translations cho tất cả các menu, nhãn header, nút thu gọn và aria-labels.
+  * Xây dựng `src/components/layout/WorkspaceSidebar.tsx`:
+    * Tô đậm mục active theo `usePathname()`.
+    * Icon SVG chuyên nghiệp chuẩn `ui-ux-pro-max`, không dùng emoji.
+    * Hỗ trợ nút thu gọn (Desktop Collapse `w-64` <-> `w-20`) và ngăn kéo trượt trên di động (Mobile Drawer with Backdrop & Escape key).
+  * Xây dựng `src/components/layout/WorkspaceHeader.tsx`:
+    * Nút mở mobile drawer trên màn hình nhỏ.
+    * Huy hiệu trung tâm hiện tại (Workspace Badge) kèm đèn tín hiệu Live HttpOnly.
+    * Tích hợp `LanguageSwitcher`, nút "Đổi không gian" (Switch Workspace) và nút "Đăng xuất" (Logout) gọi `authService.logout()` thu hồi token trên Database Supabase rồi chuyển hướng an toàn về `/login`.
+  * Xây dựng `src/components/layout/WorkspaceShell.tsx`: Quản lý trạng thái tương tác và chia tách 2 cột (Sidebar + Work Area).
+  * Xây dựng `src/app/[tenantSlug]/layout.tsx`: Server Component tiếp nhận `params: Promise<{ tenantSlug: string }>` theo chuẩn Next.js 16.
+  * Xây dựng các trang con: `courses/page.tsx` (tích hợp SWR `ExampleCourseList`), `classes/page.tsx`, `schedule/page.tsx`, `attendance/page.tsx` (sử dụng component chuẩn `WorkspaceSectionView`), đảm bảo chuyển trang mượt mà không 404.
+  * Tinh giản `DashboardView.tsx`: Loại bỏ header trùng lặp, tối ưu thẻ ngữ nghĩa HTML5.
+  * Kiểm định chất lượng: TypeScript `npx tsc --noEmit` đạt 0 lỗi; `pnpm run build` (Turbopack) thành công 14/14 static & dynamic routes; `dotnet test` đạt 21/21 passed (100%).
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-19] Khắc Phục Lỗi CORS & Đồng Bộ Định Tuyến Same-Origin BFF & Streaming Suspense trên Subpages
+* **Mô tả**: Sửa triệt để lỗi CORS khi Axios gọi nhầm `/api/api/auth/login-proxy`, cấu hình chính sách CORS `AllowClient` trên .NET BFF và tái cấu trúc các subpages (`classes`, `schedule`, `attendance`, `courses`) sang streaming pattern `<Suspense>` của Next.js App Router.
+* **Kết quả**:
+  * Đặt `NEXT_PUBLIC_API_URL=""` và `baseURL: undefined` để Axios phân giải relative paths chuẩn xác tới Next.js Same-Origin Route Handlers.
+  * Cấu hình chính sách CORS `AllowClient` với `WithOrigins("http://localhost:3000")` trên .NET BFF `Program.cs`.
+  * Tách component con `*Content` và bọc `<Suspense fallback={<SectionLoadingFallback />}>` trên toàn bộ 4 subpages, đưa toàn bộ route sang `◐ (Partial Prerender)`.
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-19] Rà Soát Toàn Diện Đa Ngôn Ngữ (i18n) & Nâng Cấp Hệ Thống Typography (Plus Jakarta Sans)
+* **Mô tả**: Loại bỏ triệt để văn bản hardcoded, chuẩn hóa thông báo lỗi xác thực & mạng theo Redux `state.language.t`, đồng bộ động `lang` trên thẻ `<html>` và thay thế font Geist/Arial lỗi bằng `Plus_Jakarta_Sans` và `JetBrains_Mono` hỗ trợ trọn vẹn dấu tiếng Việt.
+* **Kết quả**:
+  * Cập nhật `WorkspaceSectionView`: Đổi tiêu đề module đúng ngữ pháp song ngữ ("Phân hệ Lớp học" / "Classes Module").
+  * Tinh chỉnh `DashboardView`: Câu nối mạch lạc với `bffSecurityDesc` và tenant slug.
+  * Bản địa hóa `login/page.tsx`: Thêm `getLocalizedAuthError` ánh xạ thông báo lỗi backend sang tiếng Việt/tiếng Anh tương ứng; không làm rò rỉ chuỗi tiếng Anh của Axios khi đang chọn tiếng Việt.
+  * Bản địa hóa `ExampleCourseList`: Định dạng tiền tệ tự động theo ngôn ngữ (`VND` / `USD`), chuẩn hóa lỗi về `{t.courses.defaultErrorMessage}`.
+  * Tích hợp `LanguageHtmlSync`: Tự động cập nhật `document.documentElement.lang` khi chuyển đổi ngôn ngữ.
+  * Tích hợp Google Fonts `Plus_Jakarta_Sans` & `JetBrains_Mono` với `subsets: ["latin", "vietnamese"]` trên toàn bộ giao diện, xóa bỏ triệt để tình trạng vỡ dấu tiếng Việt.
+  * Kiểm định: `pnpm run build` thành công 14/14 routes, `dotnet test` đạt 21/21 passed.
 * **Người thực hiện**: AI Agent & User.
 
 ---
@@ -93,14 +230,14 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 
 ### Giai đoạn 1: Xây dựng Core UI & Design System (Client)
 - [x] Thiết lập thư mục components dùng chung `src/components/common/` (Button, index...).
-- [ ] Xây dựng App Shell Layout (Sidebar điều hướng, Header Bar, User Avatar, Notification Menu).
-- [ ] Định nghĩa Design Tokens (Theme colors, Spacing, Typography) chuẩn theo `ui-ux-pro-max`.
+- [x] Xây dựng App Shell Layout (Sidebar điều hướng, Header Bar, Switch Workspace, Logout, Mobile Drawer).
+- [x] Định nghĩa Design Tokens (Theme colors, Spacing, Typography với Plus Jakarta Sans & JetBrains Mono) chuẩn theo `ui-ux-pro-max`.
 
 ### Giai đoạn 2: Tích hợp Xác thực (Authentication)
 - [x] Tích hợp API xác thực từ Backend (BFF .NET) / Supabase.
 - [x] Quản lý trạng thái phiên đăng nhập Backend (JWT token, middleware bảo vệ tenant).
-- [ ] Màn hình Đăng nhập (Sign In) & Đăng ký (Sign Up) trên Client.
-- [ ] Client Auth context/middleware quản lý token lưu trữ và route protection.
+- [x] Màn hình Đăng nhập (Sign In) & Chọn trung tâm trên Client (BFF HttpOnly Cookie).
+- [x] Client Auth context/middleware quản lý token lưu trữ và route protection.
 
 ### Giai đoạn 3: Phân hệ Quản trị & Khóa học (LMS Core)
 - [ ] Dashboard tổng quan (Thống kê học viên, doanh thu, khóa học).

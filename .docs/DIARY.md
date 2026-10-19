@@ -140,4 +140,462 @@ Tài liệu này ghi lại toàn bộ lịch sử các phiên làm việc, nhữ
 * **Options Pattern (`IOptions<T>`)**:
   - Tuân thủ nguyên tắc Clean Architecture, tách biệt cấu hình và business logic, hỗ trợ type-safety và dễ dàng unit test không cần phụ thuộc vào `IConfiguration`.
 
+---
 
+## [2026-10-19] Triển khai BFF Auth Flow, Edge Middleware & Redux Toolkit i18n cho Client
+
+### Mục tiêu trong ngày
+* Xây dựng luồng xác thực Client BFF với HttpOnly Cookie an toàn chống XSS.
+* Triển khai `middleware.ts` trên Edge/Node Runtime bảo vệ các Dynamic Route `/[tenantSlug]/*`, kiểm tra hết hạn và chặn truy cập chéo (Context Mismatch Check).
+* Cập nhật trang `/login` xử lý tự động điều hướng quay lại (`redirectPath`) sau khi chọn trung tâm.
+* Quản lý trạng thái đa ngôn ngữ (Tiếng Việt / English) qua Redux Toolkit, loại bỏ hoàn toàn hardcoded route strings.
+
+### Các công việc đã thực hiện
+1. **Kiến trúc BFF & HttpOnly Cookie**:
+   - Cấu hình biến môi trường `DOTNET_API_URL=http://localhost:5045` trong `client/.env.local`.
+   - Tạo các interfaces TypeScript chuẩn tại `client/src/types/auth.ts`: `TenantSummary`, `LoginResponse`, `SelectTenantResponse`, `SetSessionResponse`.
+   - Tạo Next.js Route Handlers:
+     + `src/app/api/auth/login-proxy/route.ts`: Tiếp nhận thông tin đăng nhập từ client, chuyển tiếp sang .NET BFF và trả về danh sách trung tâm.
+     + `src/app/api/auth/set-session/route.ts`: Gọi `select-tenant` xuống .NET BFF, trích xuất access token và gán cookie `access_token` với `httpOnly: true, sameSite: 'lax', path: '/', maxAge: 14400`.
+2. **Next.js Edge Middleware (`client/src/middleware.ts`)**:
+   - Viết hàm `decodeJwtPayload` giải mã Payload Base64URL trực tiếp trên Edge Runtime không phụ thuộc thư viện bên ngoài.
+   - Kiểm tra tuần tự:
+     + Chưa đăng nhập -> Redirect về `/login?redirect=<current_path>`.
+     + Token hỏng hoặc claim `exp` đã hết hạn -> Xóa cookie `access_token` và redirect về `/login`.
+     + Lệch slug (`requestedTenantSlug !== payload.tenant_slug`) -> Tự động bẻ lái redirect về đúng `/${payload.tenant_slug}/dashboard`.
+     + Hợp lệ -> `NextResponse.next()`.
+   - Cấu hình Matcher chuẩn xác bỏ qua static files, assets, API và login.
+3. **Cập nhật Giao diện Login (`client/src/app/(auth)/login/page.tsx`)**:
+   - Tích hợp `useSearchParams` đọc query `redirect`, bọc trong `<Suspense>` tương thích strict PPR.
+   - Xử lý điều hướng thông minh sau khi chọn trung tâm: nếu `redirectPath` khớp với slug vừa chọn thì điều hướng về trang đó, ngược lại về Dashboard mặc định.
+4. **Tích hợp Redux Toolkit i18n & Loại bỏ Hardcoded Routes**:
+   - Cài đặt `@reduxjs/toolkit` và `react-redux`.
+   - Tạo `src/store/slices/languageSlice.ts` định nghĩa từ điển song ngữ (Tiếng Việt / Tiếng Anh) cho toàn bộ UI và Auth.
+   - Tạo `src/store/index.ts`, `src/store/hooks.ts` và `src/store/StoreProvider.tsx` bọc trong `RootLayout`.
+   - Tạo component dùng chung `src/components/common/LanguageSwitcher.tsx` với icon SVG chuẩn không emoji.
+   - Chuẩn hóa `src/constants/routes.ts` bổ sung các helpers định tuyến động cho `TENANT` và `API`.
+5. **Kiểm thử thực tế**:
+   - `pnpm run build`: Đạt 0 lỗi TypeScript, 0 lỗi cú pháp App Router, kích hoạt thành công Partial Prerendering và Proxy Middleware.
+   - `pnpm dev`: Kiểm định thành công cả 3 kịch bản chuyển hướng qua `curl` (chưa đăng nhập, lệch tenant slug, token hết hạn xóa cookie).
+
+### Quyết định kiến trúc & Kỹ thuật
+* **BFF (Backend For Frontend) Cookie Security**:
+  - Trình duyệt client không lưu JWT trong `localStorage` hay `sessionStorage`. Toàn bộ token được bảo vệ bởi cờ `HttpOnly`, ngăn chặn mọi nguy cơ đánh cắp token qua XSS.
+* **Edge-compatible Lightweight Token Parsing**:
+  - Không nạp thư viện `jsonwebtoken` (vốn phụ thuộc Node.js core crypto), chỉ giải mã Base64URL phần payload bằng Web APIs (`atob`) giúp middleware khởi động nhanh và tương thích hoàn toàn với Edge Runtime.
+* **Tách rời từ điển Localization (Separation of Concerns)**:
+  - Tách riêng toàn bộ dữ liệu văn bản từ điển ra thư mục `src/locales/` (`types.ts`, `vi.ts`, `en.ts`, `index.ts`), giúp `languageSlice.ts` chỉ đảm nhận nhiệm vụ quản lý state của Redux, tạo điều kiện thuận lợi mở rộng quy mô text và bổ sung ngôn ngữ mới dễ dàng.
+
+---
+
+## [2026-10-19] Nâng cấp Hệ thống Xác thực BFF: Refresh Token Rotation & OpenAPI Transformers
+
+### Mục tiêu trong ngày
+* Xây dựng cơ chế Refresh Token Rotation gắn theo ngữ cảnh trung tâm (`ITenantEntity`) trong `BFF/`.
+* Tái cấu trúc và bổ sung các endpoints xác thực: `select-tenant` cấp phát Refresh Token, `refresh` xoay vòng token không phụ thuộc tenant header cũ, `revoke` thu hồi an toàn.
+* Cấu hình Swagger UI thông qua OpenAPI Transformers thuần (.NET 10 `Microsoft.AspNetCore.OpenApi` + `Swashbuckle.AspNetCore.SwaggerUI`), không cài thêm thư viện Scalar ngoài.
+* Tạo EF Core migration và cập nhật bảng `RefreshTokens` lên Supabase PostgreSQL.
+* Bổ sung bài kiểm thử tự động, đảm bảo 0 lỗi biên dịch, 0 cảnh báo và 100% test case vượt qua.
+
+### Các công việc đã thực hiện
+1. **Mô hình Dữ liệu & Options Pattern**:
+   - Bổ sung cấu hình `"RefreshTokenExpiryDays": 7` trong `appsettings.json` và `appsettings.Development.json`.
+   - Cập nhật `JwtOptions.cs` với thuộc tính `RefreshTokenExpiryDays` (mặc định 7 ngày).
+   - Tạo thực thể `RefreshToken.cs` kế thừa `ITenantEntity`, lưu trữ `TenantId`, `UserId`, `Token`, `ExpiresAt`, `CreatedAt`, `RevokedAt`, `ReplacedByToken` và 3 computed properties: `IsExpired`, `IsRevoked`, `IsActive`.
+   - Bổ sung quan hệ 1-N `User.RefreshTokens` trong `User.cs`.
+   - Khai báo `IJwtService.GenerateRefreshToken()` và DTO `RefreshTokenRequest.cs`.
+2. **Tầng Infrastructure & Database**:
+   - Triển khai `JwtService.GenerateRefreshToken()` sử dụng `RandomNumberGenerator.GetBytes(64)` và `Convert.ToBase64String(...)`.
+   - Cấu hình Fluent API trong `AppDbContext.cs`:
+     + `DbSet<RefreshToken> RefreshTokens`.
+     + Đặt Unique Index cho cột `Token`, độ dài tối đa 200 ký tự.
+     + Bỏ qua 3 computed properties (`entity.Ignore(...)`).
+     + Ràng buộc khóa ngoại: `TenantId` trỏ về `Tenant` (Cascade Delete), `UserId` trỏ về `User` (Restrict Delete).
+     + Tự động thừa hưởng Tenant Query Filter toàn cục nhờ kế thừa `ITenantEntity`.
+   - Tạo migration `20261019042858_AddRefreshTokensTable` và chạy `dotnet ef database update` cập nhật thành công lên Supabase PostgreSQL.
+3. **Nâng cấp AuthController**:
+   - Tiêm phụ thuộc `IOptions<JwtOptions>` theo Options Pattern (loại bỏ hoàn toàn việc đọc `IConfiguration` thủ công).
+   - Nâng cấp `POST /api/auth/select-tenant`: Cấp phát đồng thời `accessToken` và `refreshToken`, lưu bản ghi `RefreshToken` mới vào DB, trả về `{ accessToken, refreshToken, tenantSlug, role }`.
+   - Thêm `POST /api/auth/refresh`: Sử dụng `.IgnoreQueryFilters()` để tra cứu token trong DB độc lập với header `CurrentTenantId`, kiểm tra tính hợp lệ và trạng thái `IsActive`, đánh dấu `RevokedAt` và `ReplacedByToken`, sinh token mới và trả về bộ token đã xoay vòng.
+   - Thêm `POST /api/auth/revoke`: Yêu cầu `[Authorize]`, đánh dấu `RevokedAt = UtcNow` cho Refresh Token còn hiệu lực để đăng xuất an toàn.
+4. **OpenAPI Transformers cho Swagger UI**:
+   - Triển khai `BearerSecuritySchemeTransformer.cs` (`IOpenApiDocumentTransformer`) sử dụng `OpenApiSecuritySchemeReference("Bearer", document)` tương thích chuẩn `Microsoft.OpenApi` v2 trong .NET 10, hiển thị nút khóa Authorize trong Swagger UI.
+   - Triển khai `TenantHeaderOperationTransformer.cs` (`IOpenApiOperationTransformer`) tự động chèn Header `X-Tenant-Slug` (mặc định `"apex-english"`), loại bỏ các route không cần ngữ cảnh trung tâm (`api/auth/login`, `api/auth/select-tenant`, `api/auth/refresh`, `api/health`).
+   - Đăng ký transformers trong `Program.cs` thông qua `builder.Services.AddOpenApi(...)`.
+5. **Kiểm thử Unit Test**:
+   - Cập nhật `DbContextModelTests.cs`: Kiểm tra đủ 13 entities, `ITenantEntity` implementation cho `RefreshToken`, unique index trên `Token`, restrict delete trên `User`, và query filter tự động.
+   - Mở rộng `JwtServiceTests.cs`: Kiểm tra tính hợp lệ của chuỗi Base64 64 bytes sinh ra và tính ngẫu nhiên/độc nhất giữa các lần gọi.
+   - Tạo `RefreshTokenRotationTests.cs`: Kiểm thử trạng thái computed properties (`IsActive`, `IsExpired`, `IsRevoked`), mô phỏng logic xoay vòng token.
+   - Chạy kiểm thử: Toàn bộ 21/21 tests đều Passed (100%), biên dịch 0 Error, 0 Warning.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Refresh Token Rotation gắn chặt vào Tenant Context (`ITenantEntity`)**:
+  - Mỗi Refresh Token được sinh ra sau khi người dùng đã chọn trung tâm cụ thể (`select-tenant`), do đó token bị khóa cứng với `TenantId`. Việc này ngăn chặn tuyệt đối tình trạng dùng token của trung tâm A để truy cập tài nguyên của trung tâm B khi làm mới.
+* **Bypass Query Filter trong Endpoint Refresh**:
+  - Tại thời điểm client gọi endpoint `/api/auth/refresh`, Access Token đã hết hạn nên `CurrentTenantService` chưa có thông tin `TenantId`. Sử dụng `.IgnoreQueryFilters()` cho phép truy vấn chính xác Refresh Token từ DB dựa trên chuỗi ngẫu nhiên bảo mật cao và quan hệ `Tenant`/`User`.
+* **OpenAPI Transformers trong .NET 10**:
+  - Tận dụng sức mạnh của OpenAPI Transformers thuần trong ASP.NET Core 10 kết hợp `Swashbuckle.AspNetCore.SwaggerUI`, không cần cài thêm các framework bên thứ ba như Scalar, giữ codebase tinh gọn và tuân thủ chặt chẽ tiêu chuẩn của hệ sinh thái Microsoft.
+
+---
+
+## [2026-10-19] Đồng bộ Thời hạn Cookie Động (Single Source of Truth) & Silent Refresh Token Rotation (Next.js 16)
+
+### Mục tiêu trong ngày
+* Đồng bộ cơ chế quản lý thời hạn token: Chuyển toàn bộ quyền kiểm soát `maxAge` của Cookie về `.NET BFF` (Single Source of Truth), loại bỏ hoàn toàn các giá trị hardcode ở phía Next.js.
+* Triển khai hoàn thiện cơ chế Silent Refresh Token Rotation tại `src/middleware.ts` trên Next.js App Router (Edge/Node Runtime).
+* Xây dựng các Route Handlers `/api/auth/refresh` và `/api/auth/logout` phục vụ quản lý phiên và thu hồi token đồng bộ với `.NET BFF`.
+* Cung cấp tiện ích `fetchFromBff<T>` hỗ trợ các Server Components và Server Actions giao tiếp chuẩn xác với Backend kèm token và context header `X-Tenant-Slug`.
+
+### Các công việc đã thực hiện
+1. **Nâng cấp `.NET BFF` (`AuthController`)**:
+   - Trong `POST /api/auth/select-tenant` và `POST /api/auth/refresh`, tính toán chính xác:
+     + `accessTokenExpiresIn = (int)TimeSpan.FromHours(expiryHours).TotalSeconds`
+     + `refreshTokenExpiresIn = (int)TimeSpan.FromDays(expiryDays).TotalSeconds`
+   - Đưa cả 2 trường vào payload JSON trả về cho Client.
+2. **Cập nhật TypeScript Types & Route Constants (`client`)**:
+   - Mở rộng `SelectTenantResponse` và `RefreshTokenResponse` trong `src/types/auth.ts` gồm 6 trường: `accessToken`, `refreshToken`, `accessTokenExpiresIn`, `refreshTokenExpiresIn`, `tenantSlug`, `role`.
+   - Bổ sung `API.AUTH.REFRESH: "/api/auth/refresh"` và `API.AUTH.LOGOUT: "/api/auth/logout"` trong `src/constants/routes.ts`.
+3. **Route Handlers**:
+   - `src/app/api/auth/set-session/route.ts`: Nhận response từ BFF và thiết lập `access_token` (`maxAge: data.accessTokenExpiresIn`), `refresh_token` (`maxAge: data.refreshTokenExpiresIn`).
+   - `src/app/api/auth/refresh/route.ts`: Tiếp nhận `refresh_token` từ cookie, gọi sang `.NET BFF`, cập nhật cặp token mới với `maxAge` động, hoặc xóa sạch cookies nếu token không hợp lệ (401).
+   - `src/app/api/auth/logout/route.ts`: Gọi sang `.NET BFF` `/api/auth/revoke` thu hồi Refresh Token trên DB, sau đó xóa sạch cookies trên trình duyệt.
+4. **Nâng cấp `src/middleware.ts` (Silent Refresh Token Rotation)**:
+   - Chuyển thành `async function middleware(request: NextRequest)`.
+   - Khi `access_token` bị thiếu hoặc đã hết hạn (`exp`), nếu vẫn còn `refresh_token`, Middleware tự động gọi `fetch` sang `.NET BFF` `/api/auth/refresh`.
+   - Khi refresh thành công: Đính kèm cặp token mới vào `response.cookies` với `maxAge: data.accessTokenExpiresIn` và `maxAge: data.refreshTokenExpiresIn`, cập nhật header cookie cho request downstream, kiểm tra Context Mismatch (`requestedTenantSlug` vs `tenantSlug`) và cho phép người dùng tiếp tục mà không bị gián đoạn.
+   - Khi refresh thất bại: Xóa toàn bộ cookies và chuyển hướng về `/login?redirect=...`.
+5. **Tiện ích BFF Client (`src/lib/bff-client.ts`)**:
+   - Viết hàm `fetchFromBff<T>(endpoint, options)` tự động đọc `access_token` từ `cookies()`, gắn `Authorization: Bearer ...` và `X-Tenant-Slug`, gọi `${process.env.DOTNET_API_URL}${endpoint}` với `cache: "no-store"`.
+6. **Kiểm tra và Xác minh chất lượng**:
+   - `dotnet test BFF/LmsSaaS.slnx -m:1 /nr:false`: Đạt 21/21 tests passed (100%), 0 Warning, 0 Error.
+   - `pnpm run build` tại `client`: Đạt 0 lỗi TypeScript, 0 lỗi linter, biên dịch trong 677ms.
+   - **Live Integration Testing**: Chạy kiểm thử trực tiếp 6 kịch bản xác thực thực tế trên Backend BFF kết nối Supabase:
+     + `POST /api/auth/login`: Xác thực thành công tài khoản `john.teacher@apex.edu.vn`.
+     + `POST /api/auth/select-tenant`: Sinh token và trả về `accessTokenExpiresIn: 14400s`, `refreshTokenExpiresIn: 604800s`.
+     + `POST /api/auth/refresh`: Xoay vòng Refresh Token thành công, cấp cặp token mới với expiry động.
+     + Old Token Replay Prevention: Refresh Token cũ bị từ chối 401 Unauthorized khi cố tái sử dụng.
+     + `POST /api/auth/revoke`: Thu hồi token thành công trong Database.
+     + Revoked Token Rejection: Token đã thu hồi bị từ chối 401 Unauthorized khi gửi lên.
+   - Đảm bảo toàn bộ các tiến trình kiểm thử đã được giải phóng sạch sẽ (ports 5045 và 3000 không còn chạy ngầm).
+7. **Tập trung hóa Cấu hình (Environment & AppSettings)**:
+   - Client: Tạo `src/constants/config.ts` (`COOKIE_NAMES`, `ENV_CONFIG`), cập nhật `.env.local` và `.env.example`. Thay thế toàn bộ hardcode URLs và tên cookie trong các route handlers, middleware và bff-client.
+   - Backend: Tạo `TenantSettings.cs`, cấu hình `"TenantSettings"` trong `appsettings.json` và `appsettings.Development.json`, tiêm `IOptions<TenantSettings>` vào `TenantHeaderOperationTransformer`.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Bypass Query Filter tại các bước Pre-Auth**:
+  - Tại `POST /api/auth/login` và `POST /api/auth/select-tenant`, người dùng chưa chọn trung tâm nên `CurrentTenantId` là null. Do thực thể `TenantMember` kế thừa `ITenantEntity`, cần áp dụng `.IgnoreQueryFilters()` để không bị bộ lọc đa khách thuê ẩn mất danh sách trung tâm của người dùng.
+* **Tập trung hóa Cấu hình Đa môi trường**:
+  - Tách rời toàn bộ cookie names, API URLs và slug mặc định vào file cấu hình môi trường `.env.local` và `appsettings.json`, tuân thủ chuẩn 12-Factor App và nguyên tắc DRY.
+* **Single Source of Truth cho thời hạn Cookie**:
+  - Việc Backend `.NET` là nguồn chân lý duy nhất xác định `accessTokenExpiresIn` và `refreshTokenExpiresIn` giúp tránh hoàn toàn hiện tượng lệch pha thời gian (Clock Skew / Desync) giữa thời hạn thực tế của JWT/Database và thời hạn tồn tại của HttpOnly Cookie trên trình duyệt. Khi đổi cấu hình `JwtOptions` ở Backend, Frontend tự động cập nhật ngay lập tức mà không cần sửa code hay build lại.
+* **Non-blocking Silent Refresh tại Edge Middleware**:
+  - Người dùng không phải bấm đăng nhập lại khi Access Token hết hạn (4 giờ). Middleware tự động thực hiện Refresh Token Rotation ngầm (silent), đảm bảo trải nghiệm người dùng liền mạch (Seamless UX) trong khi vẫn duy trì chuẩn bảo mật cấp doanh nghiệp cao nhất.
+
+---
+
+## [2026-10-19] Thiết lập Tầng gọi API Tập trung Axios kết hợp SWR (Next.js 16)
+
+### Mục tiêu trong ngày
+* Xây dựng tầng gọi API tập trung chuẩn hóa cho Frontend bằng Axios kết hợp SWR.
+* Tự động bắt lỗi 401 Unauthorized tại Response Interceptor với hàng đợi Mutex (`failedQueue`), kích hoạt Silent Refresh ngầm và tự động gửi lại (replay) request ban đầu mà không làm gián đoạn người dùng.
+* Cung cấp Thin Service Layer loại bỏ hoàn toàn việc viết `try-catch` thủ công ở các UI components.
+* Xây dựng Custom Hooks với `useSWR` tối ưu hóa caching, deduplication, optimistic mutation và revalidation.
+
+### Các công việc đã thực hiện
+1. **Cài đặt thư viện**:
+   - Cài đặt `axios` v1.20 và `swr` v2.5 qua `pnpm add axios swr`.
+2. **Khởi tạo Axios Instance (`src/lib/axios.ts`)**:
+   - `axiosClient` cấu hình sẵn `baseURL: ENV_CONFIG.PUBLIC_API_URL`, `timeout: 15000`, `withCredentials: true`.
+   - Request Interceptor: Tự động trích xuất slug trung tâm từ URL và gắn Header `X-Tenant-Slug`.
+   - Response Interceptor:
+     + Bắt lỗi 401 với cơ chế khóa hàng đợi (`isRefreshing` + `failedQueue`), ngăn chặn nhiều request đồng thời kích hoạt nhiều lượt refresh token (chống vi phạm Refresh Token Rotation).
+     + Gọi sang Route Handler `/api/auth/refresh` bằng fetch native với cookie hiện tại.
+     + Nếu thành công: Giải phóng hàng đợi và replay request ban đầu.
+     + Nếu thất bại: Chuyển hướng người dùng về trang `/login?redirect=...`.
+     + Chuẩn hóa lỗi thống nhất thành lớp `AppApiError` (`status`, `message`, `data`).
+   - Cung cấp tiện ích `api` (`get`, `post`, `put`, `patch`, `delete`) unwrapped `response.data`.
+3. **Thin Service Layer (`src/services/exampleService.ts`)**:
+   - Xây dựng `exampleService` cung cấp các phương thức CRUD (`getCourses`, `getCourseById`, `createCourse`, `updateCourse`, `deleteCourse`) hoàn toàn không chứa khối `try-catch` lặp lại.
+4. **Tích hợp SWR Custom Hooks & UI Component**:
+   - Tạo `src/hooks/useExampleCourses.ts`: Custom Hook bọc `useSWR`, trả về `courses`, `totalItems`, `totalPages`, `currentPage`, `hasNextPage`, `isLoading`, `isError`, `error`, và hàm `mutate()`.
+   - Tạo `src/components/example/ExampleCourseList.tsx`: Component hiển thị đầy đủ 4 trạng thái UI (Loading Skeleton, Error Alert với nút Thử lại, Data Cards với chuyển trang, Empty State) theo tiêu chuẩn UX `ui-ux-pro-max`.
+5. **Kiểm tra và Xác minh chất lượng**:
+   - `pnpm run build`: Biên dịch thành công trong 816ms, 0 lỗi TypeScript, 0 cảnh báo linter.
+   - `dotnet test BFF/LmsSaaS.slnx`: 21/21 Unit tests Backend đạt 100%.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Mutex & Queueing Pattern trong Axios Interceptor**:
+  - Khi người dùng truy cập một trang dashboard tải nhiều widget song song và Access Token vừa hết hạn, nếu không có cơ chế xếp hàng, tất cả các request sẽ đồng thời gọi Refresh Token. Do Refresh Token Rotation chỉ cho phép sử dụng token 1 lần duy nhất, các request đến sau sẽ gửi token đã bị thu hồi và khiến người dùng bị văng ra trang Login. Việc dùng cờ `isRefreshing` kết hợp `failedQueue` đảm bảo chỉ có duy nhất 1 lượt refresh diễn ra, các request khác tạm dừng và replay ngay khi token mới sẵn sàng.
+* **Tách biệt Thin Service Layer và State Management (SWR)**:
+  - Tầng Service chỉ tập trung vào việc định nghĩa HTTP contract và URL parameters (Pure API calling).
+  - Tầng Custom Hook (SWR) chịu trách nhiệm về state lifecycle (`isLoading`, `data`, `error`), cache retention, deduping interval và revalidation, giúp code giao diện cực kỳ sạch sẽ, dễ đọc và dễ unit test.
+
+---
+
+## [2026-10-19] Bản địa hóa Đa ngôn ngữ Tập trung (Redux i18n) & Chuẩn hóa Log / Exception 100% Tiếng Anh
+
+### Mục tiêu trong phiên làm việc
+* Rà soát và loại bỏ 100% văn bản hardcoded ở phía Frontend (Client Next.js 16).
+* Khai báo toàn bộ văn bản giao diện, thông báo xác thực, nhãn form, schema validation, aria-labels và tiêu đề trang vào từ điển `src/locales/` (`types.ts`, `vi.ts`, `en.ts`).
+* Hỗ trợ chuyển đổi ngôn ngữ tức thời (live switching Tiếng Việt / Tiếng Anh) thông qua Redux Toolkit (`useAppSelector((state) => state.language.t)`).
+* Chuẩn hóa 100% các dòng log lập trình viên, thông báo lỗi ngoại lệ (`Error`), response messages ở tầng API Server (Next.js Route Handlers và .NET BFF) sang hoàn toàn bằng Tiếng Anh.
+
+### Các công việc đã thực hiện
+1. **Mở rộng Từ điển Bản địa hóa (`src/locales/`)**:
+   - Cập nhật `types.ts`: Bổ sung các interfaces `AuthValidationTranslations`, `CoursesTranslations`, `HomeTranslations`, cùng các trường mở rộng trong `CommonTranslations` (`footerSecurityBadge`, `switchLanguageAria`, `closeErrorAria`, `showPasswordAria`, `hidePasswordAria`, `logoAlt`) và `DashboardTranslations` (`sessionHttpOnlyPrefix`, `sessionActive`, `sessionProtected`, `statsGrowth`, `statsOnline`...).
+   - Cập nhật `vi.ts`: Khai báo chi tiết 100% bản dịch Tiếng Việt chuẩn mực, chuyên nghiệp.
+   - Cập nhật `en.ts`: Khai báo chi tiết 100% bản dịch Tiếng Anh đối ứng 1:1 theo strict TypeScript interface.
+2. **Cập nhật Schema Validation (`src/lib/validations/authSchema.ts`)**:
+   - Chuyển đổi các thông báo lỗi Zod schema từ hardcoded tiếng Việt sang factory functions `createLoginSchema(t)` và `createRegisterSchema(t)` đọc trực tiếp từ `t.auth.validation`.
+3. **Refactor Giao diện Client sang Redux Reactivity**:
+   - Tạo Client Component `src/components/dashboard/DashboardView.tsx` nhận `{ tenantSlug, hasToken }`, liên kết với Redux store `t` giúp toàn bộ Dashboard chuyển đổi ngôn ngữ mượt mà ngay trên Client.
+   - Nâng cấp `src/app/[tenantSlug]/dashboard/page.tsx` thành Server Component bọc ngoài gọn gàng, chuyển việc hiển thị giao diện cho `DashboardView`.
+   - Tạo `src/components/home/HomeView.tsx` và refactor `src/app/page.tsx`: Loại bỏ toàn bộ hardcoded text, hiển thị thanh chuyển ngữ `LanguageSwitcher` trên trang chủ.
+   - Refactor `src/components/example/ExampleCourseList.tsx`: Thay thế toàn bộ chuỗi tìm kiếm, nút làm mới, phân trang, thông báo lỗi và trạng thái rỗng bằng `t.courses.*`.
+   - Nâng cấp `src/components/common/LanguageSwitcher.tsx`: Sử dụng `t.common.switchLanguageAria` và nhãn ngôn ngữ động.
+   - Nâng cấp `src/app/(auth)/login/page.tsx`: Sử dụng `t.common.closeErrorAria`, `t.common.showPasswordAria`, `t.common.hidePasswordAria`, `t.common.footerSecurityBadge`.
+4. **Chuẩn hóa Thông báo Lỗi & Log 100% Tiếng Anh**:
+   - Route Handlers Next.js (`src/app/api/auth/*`): Toàn bộ thông điệp trả về JSON (`message`) và lỗi bắt được chuyển thành câu tiếng Anh chuyên nghiệp.
+   - Client API Utilities (`src/lib/axios.ts`, `src/lib/bff-client.ts`): Toàn bộ lỗi `Error` và fallback messages chuyển sang tiếng Anh.
+   - .NET Backend (`AuthController.cs`, `TenantResolutionMiddleware.cs`, `BearerSecuritySchemeTransformer.cs`, `TenantHeaderOperationTransformer.cs`): Toàn bộ response messages và mô tả OpenAPI chuyển sang tiếng Anh chuẩn RESTful.
+5. **Kiểm tra và Xác minh chất lượng**:
+   - `pnpm run build`: 0 lỗi TypeScript, 0 lỗi linting, tất cả routes compile thành công.
+   - `dotnet test`: Toàn bộ 21/21 Unit tests trong `LmsSaaS.UnitTests` đều passed 100%.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Phân định rõ ranh giới UI Text vs Server Log / Developer Messages**:
+  - Toàn bộ văn bản hiển thị cho người dùng cuối (End-user UI) bắt buộc đi qua Redux dictionary (`t.*`) để người dùng có thể chuyển đổi linh hoạt giữa Tiếng Việt và Tiếng Anh.
+  - Toàn bộ thông báo hệ thống, mã lỗi API, Exception Message và Console/Logger của lập trình viên bắt buộc ghi bằng Tiếng Anh để đảm bảo chuẩn quốc tế, dễ tích hợp với các hệ thống APM / Log Aggregation (Datadog, OpenTelemetry, Sentry).
+
+---
+
+## [2026-10-19] Tái Cấu Trúc Toàn Diện Các API Route Handlers & Auth Service với Axios
+
+### Mục tiêu trong phiên làm việc
+* Loại bỏ triệt để mã nguồn rườm rà (boilerplate `fetch`, `JSON.stringify`, `response.json()`, manual status checking, headers) tại các Route Handlers `src/app/api/auth/*`.
+* Tận dụng tối đa sức mạnh của Axios đã cài đặt: Tạo Axios instance chuyên biệt cho Server (`bffClient`) kết nối sang .NET BFF.
+* Đóng gói tầng Client Service (`authService.ts`) để trang Đăng nhập (`login/page.tsx`) gọi API trực tiếp qua Axios một cách gọn gàng, rõ nghĩa.
+* Hợp nhất các client gọi API cũ (`apiClient.ts`) về chuẩn Axios duy nhất.
+
+### Các công việc đã thực hiện
+1. **Nâng cấp `src/lib/bff-client.ts`**:
+   - Khởi tạo `bffClient: AxiosInstance` cấu hình sẵn `baseURL: ENV_CONFIG.DOTNET_API_URL`, headers JSON và timeout 15s.
+   - Viết hàm `handleBffError(error: unknown)` tự động bắt `AxiosError`, trích xuất status code và JSON data từ .NET BFF để trả về `NextResponse.json(...)` chính xác, không cần viết try-catch thủ công lặp lại.
+   - Nâng cấp `fetchFromBff<T>` cho Server Components sử dụng `bffClient`.
+2. **Refactor 4 API Route Handlers (`src/app/api/auth/*`)**:
+   - `login-proxy/route.ts`: Rút gọn từ 56 dòng xuống chỉ còn 17 dòng nhờ `bffClient.post("/api/auth/login", body)`.
+   - `set-session/route.ts`: Ủy quyền gọi `/api/auth/select-tenant` cho `bffClient.post(...)`, loại bỏ toàn bộ validate rườm rà vì .NET BFF và TypeScript đã đảm nhiệm.
+   - `refresh/route.ts`: Thay thế `fetch` bằng `bffClient.post("/api/auth/refresh", { refreshToken })`.
+   - `logout/route.ts`: Thay thế `fetch` bằng `bffClient.post("/api/auth/revoke", ...)`.
+3. **Tạo mới `src/services/authService.ts`**:
+   - Sử dụng `api` / `axiosClient` cung cấp các phương thức `login`, `setSession`, `refresh`, `logout`.
+4. **Refactor `src/app/(auth)/login/page.tsx`**:
+   - Thay thế toàn bộ các khối gọi `fetch(ROUTES.API.AUTH.LOGIN_PROXY, ...)` và `fetch(ROUTES.API.AUTH.SET_SESSION, ...)` bằng `authService.login(...)` và `authService.setSession(...)`.
+5. **Hợp nhất `src/services/apiClient.ts`**:
+   - Chuyển `apiClient.ts` sang re-export `api` và `axiosClient` từ `@/lib/axios`.
+6. **Kiểm tra và Xác minh**:
+   - `pnpm run build`: Thành công trong 2.7s, 0 lỗi TypeScript, 0 lỗi cú pháp.
+   - `dotnet test`: 21/21 Unit tests Backend passed 100%.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Kiến trúc Axios 2 Đầu (Client-to-Next.js và Next.js-to-BFF)**:
+  - Ở phía Trình duyệt (Client): `axiosClient` (`src/lib/axios.ts`) gọi tới `/api/*` của Next.js (hoặc backend công khai), tự động đính kèm HttpOnly Cookies, bắt lỗi 401 với hàng đợi Mutex và kích hoạt Silent Refresh.
+  - Ở phía Máy chủ (Next.js Route Handlers / Server Components): `bffClient` (`src/lib/bff-client.ts`) gọi trực tiếp tới `http://localhost:5045` (.NET BFF) trong mạng nội bộ, tự động xử lý serialization, timeout và chuyển tiếp status code nguyên bản từ .NET sang Client thông qua `handleBffError`.
+
+---
+
+## [2026-10-19] Tích hợp Global SWR Provider (SWRConfig) Bọc Toàn Cây Ứng Dụng Client
+
+### Mục tiêu trong phiên làm việc
+* Thiết lập Global Provider cho SWR (`SWRConfig`) trong thư mục `client/src/providers/`.
+* Tự động liên kết `api.get` (Axios) làm Default Fetcher cho SWR, loại bỏ nhu cầu truyền fetcher thủ công trong từng component.
+* Cấu hình caching tối ưu: chống gọi trùng lặp (deduping interval), tự động revalidate on focus/reconnect.
+* Chặn vòng lặp retry vô hạn đối với các mã lỗi xác thực (401, 403, 404).
+* Bọc `<SwrProvider>` tại Root Layout (`src/app/layout.tsx`).
+
+### Các công việc đã thực hiện
+1. **Khởi tạo `src/providers/SwrProvider.tsx`**:
+   - Sử dụng `"use client"`.
+   - Cấu hình `swrGlobalConfig`:
+     + `fetcher: async (url: string) => api.get(url)`: Sử dụng Axios instance đã cấu hình interceptor để tự động bắt và làm mới token khi fetch SWR.
+     + `revalidateOnFocus: true`, `revalidateOnReconnect: true`.
+     + `dedupingInterval: 5000`: Gom các request cùng endpoint trong 5 giây thành 1 lượt gọi duy nhất.
+     + `shouldRetryOnError`: Trả về `false` nếu lỗi là `AppApiError` với status 401, 403 hoặc 404, ngăn SWR gửi retry dồn dập khi phiên đăng nhập hết hạn hoặc tài nguyên không tồn tại.
+     + `onError`: Ghi log lỗi bằng tiếng Anh ở môi trường phát triển (`[SWR Error]`).
+   - Tạo barrel export `src/providers/index.ts`.
+2. **Bọc SWR Provider tại Root Layout (`src/app/layout.tsx`)**:
+   - Tích hợp `<SwrProvider>` bên trong `<StoreProvider>` (Redux Toolkit) và bên trong `<Suspense fallback={null}>`:
+     ```tsx
+     <Suspense fallback={null}>
+       <StoreProvider>
+         <SwrProvider>{children}</SwrProvider>
+       </StoreProvider>
+     </Suspense>
+     ```
+3. **Chuẩn hóa Barrel Export & Comments**:
+   - Tạo `src/hooks/index.ts` xuất khẩu toàn bộ custom hooks (`useDebounce`, `useExampleCourses`, `useExampleCourse`).
+   - Dịch toàn bộ JSDoc comments trong `SwrProvider.tsx`, `exampleService.ts` và `useExampleCourses.ts` sang 100% tiếng Anh chuẩn.
+4. **Kiểm tra và Xác minh chất lượng**:
+   - `npx tsc --noEmit`: 0 lỗi TypeScript.
+   - `pnpm run build`: Thành công 100% với Turbopack & App Router.
+   - `dotnet test`: 21/21 Unit tests Backend đạt 100% Passed.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Thứ bậc Provider (Provider Hierarchy)**:
+  - `<StoreProvider>` bọc ngoài cùng cung cấp state i18n / auth cho toàn bộ ứng dụng.
+  - `<SwrProvider>` đặt ngay bên dưới, giúp mọi component con có thể gọi `useSWR(key)` trực tiếp mà không cần chỉ định fetcher, và tự động thừa hưởng cơ chế bắt lỗi 401 tự động xoay vòng refresh token của Axios.
+* **Ngăn chặn Retry bão hòa đối với lỗi Auth (Retry Suppression)**:
+  - Khi gặp 401, Axios Response Interceptor đã phụ trách việc refresh token hoặc chuyển hướng về `/login`. Nếu SWR tiếp tục retry song song, nó có thể gây ra xung đột phiên làm việc hoặc vi phạm Refresh Token Rotation. Việc chặn retry trên 401/403/404 ở cấp SWR Config giúp hệ thống vận hành ổn định và an toàn.
+
+---
+
+## [2026-10-19] Xây dựng Trọn bộ Khung Giao diện App Shell Layout (`[tenantSlug]/layout.tsx`)
+
+### Mục tiêu trong phiên làm việc
+* Xây dựng khung giao diện App Shell hiện đại cho không gian làm việc trung tâm đào tạo tại `client/src/app/[tenantSlug]/layout.tsx`.
+* Tách biệt Sidebar điều hướng chuyên nghiệp, Header tích hợp chuyển ngữ & đăng xuất, và khu vực nội dung cuộn độc lập.
+* Sử dụng 100% routes từ `src/constants/routes.ts`, không hardcode URLs.
+* Tích hợp Redux i18n đa ngôn ngữ cho toàn bộ menu và nhãn giao diện.
+* Không dùng emoji; dùng icon SVG theo chuẩn `ui-ux-pro-max`.
+
+### Các công việc đã thực hiện
+1. **Cập nhật Hằng số Định tuyến (`src/constants/routes.ts`)**:
+   - Mở rộng `ROUTES.TENANT` gồm: `ROOT`, `DASHBOARD`, `COURSES`, `CLASSES`, `SCHEDULE`, `ATTENDANCE`.
+2. **Bản địa hóa Thanh điều hướng (`src/locales/`)**:
+   - Bổ sung interface `NavigationTranslations` vào `types.ts`.
+   - Cung cấp toàn bộ bản dịch song ngữ Tiếng Việt và Tiếng Anh trong `vi.ts` và `en.ts`.
+3. **Phát triển Components Layout (`src/components/layout/`)**:
+   - `WorkspaceSidebar.tsx`:
+     + Menu điều hướng: Tổng quan, Khóa học, Lớp học, Lịch học, Điểm danh.
+     + Active highlighting theo `usePathname()` với style SaaS tinh tế.
+     + Thu gọn linh hoạt trên Desktop (`w-64` <-> `w-20`).
+     + Ngăn kéo trượt (Mobile Drawer) với lớp phủ mờ Backdrop, đóng mở mượt mà và hỗ trợ phím Escape.
+   - `WorkspaceHeader.tsx`:
+     + Nút mở mobile drawer trên màn hình nhỏ.
+     + Huy hiệu trung tâm hiện tại (Workspace Badge) kèm đèn tín hiệu Live HttpOnly.
+     + Tích hợp `LanguageSwitcher`, nút Đổi không gian (`ROUTES.AUTH.LOGIN`), và nút Đăng xuất (kết nối `authService.logout()` thu hồi refresh token DB trên Supabase).
+   - `WorkspaceShell.tsx`: Quản lý state đóng/mở sidebar, chia khung 2 cột với thanh cuộn độc lập cho main content.
+   - `WorkspaceSectionView.tsx`: Giao diện chung cao cấp cho các phân hệ chức năng.
+4. **App Shell Layout (`src/app/[tenantSlug]/layout.tsx`)**:
+   - Server Component nhận `params: Promise<{ tenantSlug: string }>` theo chuẩn Next.js 16 (`await params`).
+5. **Tạo các Subpages**:
+   - `courses/page.tsx`: Tích hợp danh sách khóa học SWR (`ExampleCourseList`).
+   - `classes/page.tsx`, `schedule/page.tsx`, `attendance/page.tsx`: Hiển thị phân hệ tương ứng, chuyển trang mượt mà không bị 404.
+6. **Kiểm tra và Xác minh**:
+   - TypeScript `npx tsc --noEmit`: 0 lỗi.
+   - `pnpm run build`: Hoàn thành 14/14 static & dynamic routes thành công.
+   - `dotnet test`: 21/21 Unit tests Backend đạt 100% Passed.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Phân tách Server Layout & Client Shell (Hybrid Composition)**:
+  - `layout.tsx` là async Server Component trích xuất `tenantSlug` từ route params mà không làm mất hiệu năng SSR/PPR.
+  - `WorkspaceShell` là Client Component đóng vai trò điều phối các tương tác responsive (thu gọn sidebar, mobile drawer, đóng bằng phím ESC) mà không làm ô nhiễm Server Layout.
+* **Độc lập luồng cuộn (Independent Scroll Container)**:
+  - Khung bao ngoài cố định `h-screen overflow-hidden`.
+  - Header `sticky top-0`.
+  - Phần `<main>` có `overflow-y-auto`, giúp Sidebar và Header luôn cố định vị trí khi người dùng cuộn xem nội dung dài trên bảng dữ liệu hoặc khóa học.
+
+---
+
+## [2026-10-19] Khắc Phục Lỗi CORS & Đồng Bộ Định Tuyến Same-Origin BFF (Next.js 16 & .NET BFF)
+
+### Mục tiêu trong phiên làm việc
+* Điều tra và giải quyết triệt để lỗi: `Access to XMLHttpRequest at 'http://localhost:5045/api/api/auth/login-proxy' from origin 'http://localhost:3000' has been blocked by CORS policy`.
+* Khôi phục tính nhất quán của kiến trúc BFF 2 đầu: Client gọi Next.js Same-Origin Route Handlers, Next.js gọi .NET BFF qua `bffClient`.
+* Thiết lập chính sách CORS chuẩn trên .NET BFF (`Program.cs`) cho phép `http://localhost:3000`.
+
+### Các công việc đã thực hiện
+1. **Phân tích Nguyên nhân Gốc rễ (Root Cause)**:
+   - **Frontend URL Resolution**: `NEXT_PUBLIC_API_URL` được cấu hình là `http://localhost:5045/api`. Khi `authService.login()` gọi endpoint `ROUTES.API.AUTH.LOGIN_PROXY` (`/api/auth/login-proxy`), Axios đã tự động ghép `baseURL` + `url` tạo ra URL `http://localhost:5045/api/api/auth/login-proxy`:
+     + Gây lặp tiền tố `/api/api/`.
+     + Bắn request thẳng sang Backend .NET (port 5045) thay vì gọi Next.js Route Handler cục bộ (port 3000).
+     + Endpoint `login-proxy` vốn là Route Handler trung gian của Next.js (`src/app/api/auth/login-proxy/route.ts`), hoàn toàn không tồn tại trên .NET BFF (trên .NET là `/api/auth/login`).
+     + Bỏ qua hoàn toàn tầng quản lý HttpOnly Cookies của Next.js.
+   - **Backend .NET CORS**: File `Program.cs` ở .NET BFF chưa đăng ký dịch vụ `AddCors` và middleware `UseCors`, khiến request cross-origin từ trình duyệt bị từ chối do thiếu header `Access-Control-Allow-Origin`.
+2. **Khắc phục ở Phía Frontend (Client)**:
+   - Cập nhật `client/src/constants/config.ts`: Chuyển `PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || ""` thành chuỗi rỗng mặc định.
+   - Cập nhật `client/.env.local` và `client/.env.example`: Đặt `NEXT_PUBLIC_API_URL=` rỗng để các request từ Axios Client tự động phân giải thành Relative URL (`/api/...`) tới chính Next.js server (Same-Origin).
+   - Cập nhật `client/src/lib/axios.ts`: Gán `baseURL: ENV_CONFIG.PUBLIC_API_URL || undefined` để khi rỗng Axios hiểu là relative path chuẩn.
+3. **Cấu hình CORS ở Phía Backend (.NET BFF)**:
+   - Trong `BFF/LmsSaaS.Api/Program.cs`:
+     + Đăng ký chính sách CORS `"AllowClient"` với `WithOrigins("http://localhost:3000")`, `AllowAnyHeader()`, `AllowAnyMethod()`, `AllowCredentials()`.
+     + Đặt `app.UseCors("AllowClient");` ngay trước `app.UseAuthentication()`.
+4. **Kiểm tra và Xác minh chất lượng**:
+   - `pnpm run build`: Biên dịch 14/14 routes thành công 100%, 0 lỗi TypeScript, 0 lỗi cú pháp.
+   - `dotnet test BFF/LmsSaaS.slnx`: 21/21 Unit tests Backend đạt 100% Passed.
+   - Kiểm thử thực tế Next.js Route Handler `/api/auth/login-proxy`: Trả về dữ liệu đăng nhập sơ bộ và danh sách tenants thành công.
+
+---
+
+## [2026-10-19] Tối Ưu Hóa Prerendering & Streaming với Pattern `<Suspense>` Trên Các Subpages
+
+### Mục tiêu trong phiên làm việc
+* Áp dụng chuẩn kiến trúc Next.js App Router (Instant Navigation & Partial Prerendering): Tách logic đọc `await params` vào component con và bọc `<Suspense>` tại component cha.
+* Đảm bảo component cha trả về static shell tức thì trong khi nội dung động (`tenantSlug`) được stream mượt mà.
+
+### Các công việc đã thực hiện
+1. **Refactor [classes/page.tsx](file:///d:/Project/SAAS/client/src/app/[tenantSlug]/classes/page.tsx)**:
+   - Tách `ClassesContent` phụ trách `await params` và render `WorkspaceSectionView`.
+   - `ClassesPage` bọc `ClassesContent` trong `<Suspense fallback={...}>`.
+2. **Refactor [schedule/page.tsx](file:///d:/Project/SAAS/client/src/app/[tenantSlug]/schedule/page.tsx)**:
+   - Áp dụng cấu trúc `ScheduleContent` bọc `<Suspense>` với fallback loading.
+3. **Refactor [attendance/page.tsx](file:///d:/Project/SAAS/client/src/app/[tenantSlug]/attendance/page.tsx)**:
+   - Áp dụng cấu trúc `AttendanceContent` bọc `<Suspense>` với fallback loading.
+4. **Refactor [courses/page.tsx](file:///d:/Project/SAAS/client/src/app/[tenantSlug]/courses/page.tsx)**:
+   - Áp dụng cấu trúc `CoursesContent` bọc `<Suspense>` với fallback loading.
+5. **Kiểm tra và Xác minh**:
+   - `pnpm run build`: Toàn bộ 5 route con (`dashboard`, `classes`, `schedule`, `attendance`, `courses`) được nhận diện là `◐ (Partial Prerender)` - prerendered static HTML với dynamic server-streamed content.
+   - Kiểm thử thực tế tất cả các route đều trả về `200 OK`.
+
+---
+
+## [2026-10-19] Rà Soát Toàn Diện & Chuẩn Hóa Đa Ngôn Ngữ (i18n) Cho UI Phía Client
+
+### Mục tiêu trong phiên làm việc
+* Rà soát triệt để toàn bộ mã nguồn Frontend (`client/src/`) để phát hiện và loại bỏ tất cả text hardcode còn sót lại.
+* Đảm bảo mọi chuỗi văn bản, nhãn giao diện, thông báo lỗi (error handling), định dạng tiền tệ và tiêu đề module tuân thủ 100% từ điển đa ngôn ngữ Redux (`state.language.t`).
+* Đồng bộ động thuộc tính `lang` của thẻ `<html>` theo ngôn ngữ được chọn nhằm tối ưu Accessibility (a11y).
+
+### Các công việc đã thực hiện
+1. **Rà soát & Chuẩn hóa Từ điển Dịch thuật (`client/src/locales/`)**:
+   - Cập nhật `workingInSpace` trong `vi.ts` và `en.ts` để phân tách câu rành mạch, kết hợp tự nhiên với `/{tenantSlug}` và `bffSecurityDesc`.
+2. **Cập nhật Giao diện Dashboard ([DashboardView.tsx](file:///d:/Project/SAAS/client/src/components/dashboard/DashboardView.tsx))**:
+   - Tinh chỉnh văn bản giới thiệu không gian: Ghép nối câu mượt mà `{t.dashboard.workingInSpace} /{tenantSlug}. {t.dashboard.bffSecurityDesc}` không bị trùng lặp.
+   - Chuẩn hóa nhãn học viên hoạt động `{t.dashboard.statsActiveStudentsSub}: /{tenantSlug}`.
+3. **Cập nhật Phân hệ Không gian Làm việc ([WorkspaceSectionView.tsx](file:///d:/Project/SAAS/client/src/components/layout/WorkspaceSectionView.tsx))**:
+   - Sử dụng `currentLanguage` để định dạng tiêu đề module ngữ pháp tự nhiên: Tiếng Việt hiển thị `Phân hệ {meta.title}` (ví dụ: "Phân hệ Lớp học"), Tiếng Anh hiển thị `{meta.title} Module` (ví dụ: "Classes Module").
+   - Nhấn mạnh và làm nổi bật `tenantSlug` trong chuỗi mô tả tích hợp.
+4. **Cập nhật Trang Đăng nhập ([login/page.tsx](file:///d:/Project/SAAS/client/src/app/(auth)/login/page.tsx))**:
+   - Bổ sung helper `getLocalizedAuthError`: Chuẩn hóa các thông báo lỗi phản hồi từ .NET BFF (như `"Invalid email or password."`, `"User not found"`, v.v.) và lỗi mạng sang thông báo bản địa hóa tương ứng (`t.auth.invalidCredentialsError`, `t.auth.sessionError`, `t.auth.networkError`).
+   - Loại bỏ rò rỉ chuỗi tiếng Anh từ Axios `err.message` khi người dùng đang ở giao diện Tiếng Việt.
+5. **Cập nhật Danh sách Khóa học ([ExampleCourseList.tsx](file:///d:/Project/SAAS/client/src/components/example/ExampleCourseList.tsx))**:
+   - Thay thế lỗi thô Axios (`error?.message`) bằng `{t.courses.defaultErrorMessage}` đã được bản địa hóa.
+   - Đồng bộ động hàm `formatCurrency`: Định dạng `VND` / `vi-VN` khi ở chế độ Tiếng Việt và `USD` / `en-US` khi ở chế độ Tiếng Anh.
+6. **Đồng bộ Accessibility `<html> lang` ([StoreProvider.tsx](file:///d:/Project/SAAS/client/src/store/StoreProvider.tsx))**:
+   - Tích hợp component `LanguageHtmlSync` tự động cập nhật `document.documentElement.lang` mỗi khi người dùng thay đổi ngôn ngữ trên giao diện.
+7. **Kiểm tra và Xác minh chất lượng**:
+   - `pnpm run build`: 14/14 routes biên dịch thành công 100% với Turbopack, 0 lỗi TypeScript, 0 cảnh báo ESLint.
+   - `dotnet test BFF/LmsSaaS.slnx`: Toàn bộ 21/21 Unit tests phía Backend tiếp tục vượt qua 100%.
+
+---
+
+## [2026-10-19] Nâng Cấp Hệ Thống Typography: Tích Hợp Plus Jakarta Sans & JetBrains Mono (Hỗ Trợ Tiếng Việt Chuẩn)
+
+### Mục tiêu trong phiên làm việc
+* Khắc phục triệt để tình trạng font chữ bị lỗi hiển thị (vỡ dấu tiếng Việt, nhầm lẫn trọng số glyph, layout fallback thô về Arial).
+* Lựa chọn và thiết lập font chữ hiện đại, cao cấp chuẩn EdTech / SaaS Dashboard, hiển thị sắc nét và đồng đều cho cả Tiếng Việt và Tiếng Anh.
+
+### Các công việc đã thực hiện
+1. **Phân tích Nguyên nhân Gốc rễ (Root Cause)**:
+   - File [globals.css](file:///d:/Project/SAAS/client/src/app/globals.css) trước đó đang ép cứng: `body { font-family: Arial, Helvetica, sans-serif; }`, khiến toàn bộ ứng dụng bị hạ cấp xuống font hệ thống Arial thô cũ.
+   - File [layout.tsx](file:///d:/Project/SAAS/client/src/app/layout.tsx) sử dụng `Geist` chỉ với `subsets: ["latin"]`. Font Geist chưa tối ưu cho bộ dấu Tiếng Việt (các ký tự ư, ơ, dấu hỏi, ngã, nặng bị vỡ hoặc lệch baseline).
+2. **Nâng cấp Font Chuẩn EdTech & SaaS**:
+   - **Font Sans Chính ([layout.tsx](file:///d:/Project/SAAS/client/src/app/layout.tsx))**: Chuyển sang **`Plus_Jakarta_Sans`** từ `next/font/google` với đầy đủ `subsets: ["latin", "vietnamese"]`, dải weight rộng từ 300 đến 800 và `display: "swap"`. Đây là font chữ chuẩn mực khuyến nghị trong Skill `ui-ux-pro-max`, sở hữu đường nét hình học hiện đại, độ dễ đọc (readability) cực cao cho cả tiêu đề bài giảng và văn bản tiếng Việt.
+   - **Font Monospace**: Chuyển sang **`JetBrains_Mono`** từ `next/font/google` với `subsets: ["latin", "vietnamese"]` cho các khối mã nguồn, tenant slug `/{tenantSlug}` và badge mã hiệu.
+3. **Đồng bộ Token & Theme ([globals.css](file:///d:/Project/SAAS/client/src/app/globals.css))**:
+   - Cập nhật biến CSS `--font-sans: var(--font-plus-jakarta-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;`.
+   - Cập nhật biến CSS `--font-mono: var(--font-jetbrains-mono), monospace;`.
+   - Gán `body { font-family: var(--font-sans); }` và thêm lớp `font-sans` vào thẻ `<body>`.
+4. **Kiểm tra và Xác minh**:
+   - `pnpm run build`: Turbopack tải và biên dịch font `Plus_Jakarta_Sans` và `JetBrains_Mono` hoàn tất thành công trong 1.4s, 14/14 routes đạt chuẩn `◐ (Partial Prerender)`.
+   - Kiểm tra mã nguồn HTML render thực tế: Class font CSS module đã được đính kèm trực tiếp vào thẻ `<html>` và áp dụng kế thừa trơn tru cho toàn bộ cây DOM.
