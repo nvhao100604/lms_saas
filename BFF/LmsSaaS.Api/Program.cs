@@ -1,4 +1,5 @@
 using LmsSaaS.Api.Middlewares;
+using LmsSaaS.Api.OpenApi;
 using LmsSaaS.Infrastructure;
 using LmsSaaS.Infrastructure.Persistence;
 
@@ -7,10 +8,26 @@ var builder = WebApplication.CreateBuilder(args);
 // 1. Đăng ký kết nối Supabase (PostgreSQL), JWT Authentication & Services từ tầng Infrastructure
 builder.Services.AddInfrastructure(builder.Configuration);
 
-// 2. Đăng ký Controllers và tài liệu OpenAPI
+// 2. Cấu hình CORS cho phép Next.js Client (http://localhost:3000)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowClient", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
+
+// 3. Đăng ký Controllers và tài liệu OpenAPI kèm Transformers
 builder.Services.AddControllers();
 
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    options.AddOperationTransformer<TenantHeaderOperationTransformer>();
+});
 
 var app = builder.Build();
 
@@ -33,7 +50,12 @@ using (var scope = app.Services.CreateScope())
     await DbSeeder.SeedAsync(dbContext);
 }
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
+app.UseCors("AllowClient");
 
 app.UseAuthentication();
 app.UseMiddleware<TenantResolutionMiddleware>();

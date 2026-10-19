@@ -17,4 +17,5 @@ public class User
     public ICollection<Enrollment> Enrollments { get; set; } = new List<Enrollment>();
     public ICollection<Attendance> Attendances { get; set; } = new List<Attendance>();
     public ICollection<QuizSubmission> QuizSubmissions { get; set; } = new List<QuizSubmission>();
+    public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
 }

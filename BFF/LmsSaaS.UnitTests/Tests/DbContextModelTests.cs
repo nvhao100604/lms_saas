@@ -20,7 +20,7 @@ public class DbContextModelTests
     }
 
     [Fact]
-    public void ModelBuilder_ShouldRegisterAll12Entities()
+    public void ModelBuilder_ShouldRegisterAll13Entities()
     {
         using var context = CreateContext();
         var model = context.Model;
@@ -39,6 +39,7 @@ public class DbContextModelTests
         Assert.Contains(typeof(ClassMaterial), entityTypes);
         Assert.Contains(typeof(Quiz), entityTypes);
         Assert.Contains(typeof(QuizSubmission), entityTypes);
+        Assert.Contains(typeof(RefreshToken), entityTypes);
     }
 
     [Fact]
@@ -54,7 +55,8 @@ public class DbContextModelTests
             typeof(Attendance),
             typeof(ClassMaterial),
             typeof(Quiz),
-            typeof(QuizSubmission)
+            typeof(QuizSubmission),
+            typeof(RefreshToken)
         };
 
         foreach (var type in tenantEntityTypes)
@@ -109,6 +111,12 @@ public class DbContextModelTests
             i.Properties.Any(p => p.Name == nameof(Enrollment.StudentId)));
         Assert.NotNull(enrollmentIndex);
         Assert.True(enrollmentIndex.IsUnique);
+
+        // RefreshToken.Token Unique
+        var rtEntity = model.FindEntityType(typeof(RefreshToken));
+        var tokenIndex = rtEntity?.GetIndexes().FirstOrDefault(i => i.Properties.Any(p => p.Name == nameof(RefreshToken.Token)));
+        Assert.NotNull(tokenIndex);
+        Assert.True(tokenIndex.IsUnique);
     }
 
     [Fact]
@@ -178,6 +186,11 @@ public class DbContextModelTests
         var tmEntity = model.FindEntityType(typeof(TenantMember));
         var tmUserFk = tmEntity?.GetForeignKeys().FirstOrDefault(fk => fk.Properties.Any(p => p.Name == nameof(TenantMember.UserId)));
         Assert.Equal(DeleteBehavior.Restrict, tmUserFk?.DeleteBehavior);
+
+        // RefreshToken.User -> User (Restrict)
+        var rtEntity = model.FindEntityType(typeof(RefreshToken));
+        var rtUserFk = rtEntity?.GetForeignKeys().FirstOrDefault(fk => fk.Properties.Any(p => p.Name == nameof(RefreshToken.UserId)));
+        Assert.Equal(DeleteBehavior.Restrict, rtUserFk?.DeleteBehavior);
     }
 
     [Fact]
@@ -211,9 +224,13 @@ public class DbContextModelTests
         Assert.NotNull(userEntity);
         Assert.Empty(userEntity.GetDeclaredQueryFilters());
 
-        // Bảng ITenantEntity (như Course) thì PHẢI có Query Filter
+        // Bảng ITenantEntity (như Course, RefreshToken) thì PHẢI có Query Filter
         var courseEntity = model.FindEntityType(typeof(Course));
         Assert.NotNull(courseEntity);
         Assert.NotEmpty(courseEntity.GetDeclaredQueryFilters());
+
+        var rtEntity = model.FindEntityType(typeof(RefreshToken));
+        Assert.NotNull(rtEntity);
+        Assert.NotEmpty(rtEntity.GetDeclaredQueryFilters());
     }
 }

@@ -34,7 +34,7 @@ public class TenantResolutionMiddleware
                 var jsonResponse = JsonSerializer.Serialize(new
                 {
                     success = false,
-                    message = "Truy cập bị từ chối: Token của bạn không thuộc về trung tâm này."
+                    message = "Access denied: Your token does not belong to this workspace."
                 });
 
                 await context.Response.WriteAsync(jsonResponse);

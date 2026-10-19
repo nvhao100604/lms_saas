@@ -310,6 +310,48 @@ namespace LmsSaaS.Infrastructure.Migrations
                     b.ToTable("QuizSubmissions");
                 });
 
+            modelBuilder.Entity("LmsSaaS.Core.Entities.RefreshToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReplacedByToken")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("RefreshTokens");
+                });
+
             modelBuilder.Entity("LmsSaaS.Core.Entities.SubscriptionPlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -577,6 +619,25 @@ namespace LmsSaaS.Infrastructure.Migrations
                     b.Navigation("Student");
                 });
 
+            modelBuilder.Entity("LmsSaaS.Core.Entities.RefreshToken", b =>
+                {
+                    b.HasOne("LmsSaaS.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("LmsSaaS.Core.Entities.User", "User")
+                        .WithMany("RefreshTokens")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("LmsSaaS.Core.Entities.Tenant", b =>
                 {
                     b.HasOne("LmsSaaS.Core.Entities.SubscriptionPlan", "SubscriptionPlan")
@@ -652,6 +713,8 @@ namespace LmsSaaS.Infrastructure.Migrations
                     b.Navigation("Enrollments");
 
                     b.Navigation("QuizSubmissions");
+
+                    b.Navigation("RefreshTokens");
 
                     b.Navigation("TenantMembers");
                 });

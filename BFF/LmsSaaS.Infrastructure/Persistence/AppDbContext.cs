@@ -40,6 +40,7 @@ public class AppDbContext : DbContext
     public DbSet<ClassMaterial> ClassMaterials => Set<ClassMaterial>();
     public DbSet<Quiz> Quizzes => Set<Quiz>();
     public DbSet<QuizSubmission> QuizSubmissions => Set<QuizSubmission>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -267,6 +268,29 @@ public class AppDbContext : DbContext
             entity.HasOne(qs => qs.Student)
                 .WithMany(u => u.QuizSubmissions)
                 .HasForeignKey(qs => qs.StudentId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // 12. RefreshToken (ITenantEntity)
+        modelBuilder.Entity<RefreshToken>(entity =>
+        {
+            entity.HasKey(rt => rt.Id);
+            entity.Property(rt => rt.Token).IsRequired().HasMaxLength(200);
+            entity.HasIndex(rt => rt.Token).IsUnique();
+            entity.Property(rt => rt.ReplacedByToken).HasMaxLength(200);
+
+            entity.Ignore(rt => rt.IsExpired);
+            entity.Ignore(rt => rt.IsRevoked);
+            entity.Ignore(rt => rt.IsActive);
+
+            entity.HasOne(rt => rt.Tenant)
+                .WithMany()
+                .HasForeignKey(rt => rt.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(rt => rt.User)
+                .WithMany(u => u.RefreshTokens)
+                .HasForeignKey(rt => rt.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

@@ -106,4 +106,38 @@ public class JwtServiceTests
         Assert.Equal(email, principal.FindFirst(ClaimTypes.Email)?.Value);
         Assert.Equal(tenantSlug, principal.FindFirst("tenant_slug")?.Value);
     }
+
+    [Fact]
+    public void GenerateRefreshToken_ShouldReturnValidBase64Encoded64BytesString()
+    {
+        // Arrange
+        var options = Options.Create(_jwtOptions);
+        var jwtService = new JwtService(options);
+
+        // Act
+        var refreshToken = jwtService.GenerateRefreshToken();
+
+        // Assert
+        Assert.False(string.IsNullOrWhiteSpace(refreshToken));
+        var rawBytes = Convert.FromBase64String(refreshToken);
+        Assert.Equal(64, rawBytes.Length);
+    }
+
+    [Fact]
+    public void GenerateRefreshToken_ShouldReturnUniqueTokensEachCall()
+    {
+        // Arrange
+        var options = Options.Create(_jwtOptions);
+        var jwtService = new JwtService(options);
+
+        // Act
+        var token1 = jwtService.GenerateRefreshToken();
+        var token2 = jwtService.GenerateRefreshToken();
+        var token3 = jwtService.GenerateRefreshToken();
+
+        // Assert
+        Assert.NotEqual(token1, token2);
+        Assert.NotEqual(token2, token3);
+        Assert.NotEqual(token1, token3);
+    }
 }

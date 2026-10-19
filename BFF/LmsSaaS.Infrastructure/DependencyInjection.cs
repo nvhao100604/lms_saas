@@ -29,8 +29,9 @@ public static class DependencyInjection
 
         services.AddScoped<ICurrentTenantService, CurrentTenantService>();
 
-        // 1. Đăng ký Options Pattern và Service cho Jwt
+        // 1. Đăng ký Options Pattern và Service cho Jwt & Tenant
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+        services.Configure<TenantSettings>(configuration.GetSection(TenantSettings.SectionName));
         services.AddScoped<IJwtService, JwtService>();
 
         // 2. Cấu hình Authentication với AddJwtBearer
