@@ -1,0 +1,18 @@
+services:
+  lms-bff:
+    container_name: lms-saas-bff
+    build:
+      context: ./BFF
+      dockerfile: Dockerfile
+    ports:
+      - "5045:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_HTTP_PORTS=8080
+      - ConnectionStrings__DefaultConnection=${SUPABASE_CONNECTION_STRING}
+      - Jwt__SecretKey=${JWT_SECRET_KEY}
+      - Jwt__Issuer=LmsSaaS.BFF
+      - Jwt__Audience=LmsSaaS.Client
+      - Jwt__ExpiryHours=4.0
+      - Jwt__RefreshTokenExpiryDays=7
+    restart: unless-stopped

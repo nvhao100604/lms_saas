@@ -599,3 +599,59 @@ Tài liệu này ghi lại toàn bộ lịch sử các phiên làm việc, nhữ
 4. **Kiểm tra và Xác minh**:
    - `pnpm run build`: Turbopack tải và biên dịch font `Plus_Jakarta_Sans` và `JetBrains_Mono` hoàn tất thành công trong 1.4s, 14/14 routes đạt chuẩn `◐ (Partial Prerender)`.
    - Kiểm tra mã nguồn HTML render thực tế: Class font CSS module đã được đính kèm trực tiếp vào thẻ `<html>` và áp dụng kế thừa trơn tru cho toàn bộ cây DOM.
+
+---
+
+## [2026-10-20] Thiết lập Cấu hình Docker & Docker Compose cho Backend .NET 10 (BFF)
+
+### Mục tiêu trong phiên làm việc
+* Thiết lập toàn bộ hạ tầng container hóa chuẩn DevOps cho Backend BFF .NET 10 trong Monorepo LMS SaaS.
+* Triển khai Multi-stage Dockerfile tối ưu hóa Docker Layer Caching và bảo mật runtime với Non-root User.
+* Khai báo Docker Compose quản lý service `lms-bff` và cổng mạng nhất quán với môi trường dev host (`5045:8080`).
+* Thiết lập quản lý bí mật (Secrets Management) an toàn thông qua `.env` và template `.env.example`, đảm bảo không rò rỉ credential lên Git.
+
+### Các công việc đã thực hiện
+1. **Thiết lập `BFF/.dockerignore`**:
+   - Loại trừ triệt để thư mục cache `.vs/`, `.git/`, build outputs `bin/`, `obj/`, `out/`, user settings `*.user`, `*.suo`.
+   - Loại trừ project kiểm thử `LmsSaaS.UnitTests/` không cần thiết trong production image.
+   - Chặn các file cấu hình nhạy cảm chứa credential cục bộ (`appsettings.Development.json`, `appsettings.Local.json`).
+2. **Xây dựng Multi-stage `BFF/Dockerfile` (.NET 10)**:
+   - **Stage 1 (`build`)**: Sử dụng SDK image `mcr.microsoft.com/dotnet/sdk:10.0`.
+     - Tối ưu Docker Layer Caching: Copy riêng 3 file `.csproj` (`LmsSaaS.Core`, `LmsSaaS.Infrastructure`, `LmsSaaS.Api`) vào đúng thư mục và chạy `dotnet restore "LmsSaaS.Api/LmsSaaS.Api.csproj"` trước. Nhờ đó, nếu chỉ sửa mã nguồn C# mà không đổi package/dependency, Docker sẽ tận dụng triệt để cached layer của bước restore, rút ngắn đáng kể thời gian build.
+     - Copy toàn bộ mã nguồn còn lại và chạy `dotnet publish "LmsSaaS.Api.csproj" -c Release -o /app/publish /p:UseAppHost=false`.
+   - **Stage 2 (`final`)**: Sử dụng ASP.NET Runtime image nhẹ `mcr.microsoft.com/dotnet/aspnet:10.0`.
+     - Khai báo mở cổng nội bộ `EXPOSE 8080`.
+     - Copy thành phẩm từ `--from=build /app/publish .`.
+     - Kích hoạt `USER $APP_UID` (chạy container dưới user non-root mặc định của .NET 8/9/10 - UID 1654), triệt tiêu rủi ro đặc quyền root.
+     - Cấu hình entrypoint: `ENTRYPOINT ["dotnet", "LmsSaaS.Api.dll"]`.
+3. **Cấu hình `docker-compose.yml` tại thư mục gốc**:
+   - Khai báo service `lms-bff` với tên container `lms-saas-bff`.
+   - Ánh xạ cổng `"5045:8080"` (máy host truy cập cổng 5045 quen thuộc, container lắng nghe cổng 8080).
+   - Truyền biến môi trường theo cơ chế ghi đè phân cấp của .NET:
+     - `ASPNETCORE_ENVIRONMENT=Development`
+     - `ASPNETCORE_HTTP_PORTS=8080`
+     - `ConnectionStrings__DefaultConnection=${SUPABASE_CONNECTION_STRING}`
+     - `Jwt__SecretKey=${JWT_SECRET_KEY}`
+     - `Jwt__Issuer=LmsSaaS.BFF`
+     - `Jwt__Audience=LmsSaaS.Client`
+     - `Jwt__ExpiryHours=4.0`
+     - `Jwt__RefreshTokenExpiryDays=7`
+   - Cấu hình chính sách khởi động lại: `restart: unless-stopped`.
+4. **Quản lý Biến Môi trường (.env & .env.example)**:
+   - Trích xuất thông tin kết nối Supabase và JWT secret key từ `appsettings.Development.json` đưa vào `.env` tại thư mục gốc.
+   - Tạo file `.env.example` với các giá trị placeholder mẫu minh bạch.
+   - Xác nhận `.gitignore` đã chặn `**/.env`, `**/.env.*` và miễn trừ `!**/.env.example` (kiểm tra qua `git status` xác nhận `.env` không bị track).
+5. **Rà soát `BFF/LmsSaaS.Api/Program.cs`**:
+   - Xác nhận `app.UseHttpsRedirection()` đã được bao bọc trong điều kiện `if (!app.Environment.IsDevelopment())`, ngăn chặn việc container cố chuyển hướng HTTPS khi chỉ mở cổng HTTP 8080 trong Docker.
+6. **Kiểm tra và Xác minh chất lượng**:
+   - `dotnet build BFF/LmsSaaS.slnx`: 0 Warning, 0 Error, thời gian biên dịch thành công.
+   - `dotnet test BFF/LmsSaaS.slnx`: 21/21 Unit tests passed (100%).
+   - Tuyệt đối không chạy lệnh `docker build` hay `docker compose up` theo đúng nguyên tắc đề ra.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Docker Layer Caching cho .NET Solution**:
+  - Trong kiến trúc Clean Architecture nhiều tầng (.NET), việc copy riêng các file `.csproj` và chạy `dotnet restore` trước khi chép toàn bộ source code là best practice DevOps quan trọng nhất. Nhờ cơ chế này, quá trình tải NuGet packages chỉ diễn ra khi có sự thay đổi trong dependencies, giúp tăng tốc độ build CI/CD và local build lên gấp nhiều lần.
+* **Non-root Container Security (`USER $APP_UID`)**:
+  - Việc cấu hình non-root user theo tiêu chuẩn mới của .NET ngăn ngừa các lỗ hổng container breakout hoặc leo thang đặc quyền (privilege escalation), đáp ứng chuẩn bảo mật cấp doanh nghiệp.
+* **Hierarchical Environment Overrides (`__`)**:
+  - Tận dụng quy ước phân cấp chuẩn của ASP.NET Core (`ConnectionStrings__DefaultConnection` ánh xạ vào `ConnectionStrings:DefaultConnection`, `Jwt__SecretKey` ánh xạ vào `Jwt:SecretKey`). Cơ chế này tách rời hoàn toàn mã nguồn khỏi cấu hình nhạy cảm, giúp ứng dụng sẵn sàng triển khai mượt mà trên bất kỳ nền tảng đám mây nào (AWS ECS, Kubernetes, Azure Container Apps).

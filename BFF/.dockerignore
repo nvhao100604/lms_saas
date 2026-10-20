@@ -1,0 +1,19 @@
+# Build artifacts and caches
+**/.vs/
+**/.git/
+**/bin/
+**/obj/
+**/out/
+
+# User-specific and state files
+**/*.user
+**/*.suo
+**/*.userosscache
+**/*.sln.docstates
+
+# Unit test projects (not needed in production API container)
+LmsSaaS.UnitTests/
+
+# Sensitive local configurations (environment variables override these)
+**/appsettings.Development.json
+**/appsettings.Local.json

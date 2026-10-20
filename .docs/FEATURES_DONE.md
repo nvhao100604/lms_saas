@@ -8,7 +8,7 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 
 | Trạng thái | Số lượng | Tỷ lệ |
 | :--- | :--- | :--- |
-| **Đã hoàn thành (Done)** | 17 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System) |
+| **Đã hoàn thành (Done)** | 18 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10) |
 | **Đang tiến hành (In Progress)** | 0 | 0% |
 | **Kế hoạch sắp tới (Todo)** | 0 | - |
 
@@ -217,6 +217,24 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
   * Tích hợp `LanguageHtmlSync`: Tự động cập nhật `document.documentElement.lang` khi chuyển đổi ngôn ngữ.
   * Tích hợp Google Fonts `Plus_Jakarta_Sans` & `JetBrains_Mono` với `subsets: ["latin", "vietnamese"]` trên toàn bộ giao diện, xóa bỏ triệt để tình trạng vỡ dấu tiếng Việt.
   * Kiểm định: `pnpm run build` thành công 14/14 routes, `dotnet test` đạt 21/21 passed.
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-20] Thiết lập Cấu hình Docker & Docker Compose cho Backend .NET 10 (BFF)
+* **Mô tả**: Thiết lập toàn bộ hạ tầng container hóa chuẩn DevOps cho Backend BFF .NET 10 trong Monorepo LMS SaaS với Multi-stage Dockerfile, Docker Layer Caching, Non-root User, Docker Compose và quản lý biến môi trường an toàn.
+* **Kết quả**:
+  * Tạo mới `BFF/.dockerignore`: Loại trừ triệt để cache, file tạm, artifacts build (`bin/`, `obj/`, `out/`, `.vs/`, `.git/`), project unit tests `LmsSaaS.UnitTests/` và các file cấu hình nhạy cảm cục bộ (`appsettings.Development.json`, `appsettings.Local.json`).
+  * Tạo mới `BFF/Dockerfile`:
+    * Multi-stage build với image chuẩn `mcr.microsoft.com/dotnet/sdk:10.0` và `mcr.microsoft.com/dotnet/aspnet:10.0`.
+    * Tối ưu hóa Docker Layer Caching: Copy riêng 3 file `.csproj` (`LmsSaaS.Core`, `LmsSaaS.Infrastructure`, `LmsSaaS.Api`) và chạy `dotnet restore` trước khi chép mã nguồn và thực hiện `dotnet publish`.
+    * Bảo mật runtime với `USER $APP_UID` (non-root) và cổng lắng nghe chuẩn `8080`.
+  * Tạo mới `docker-compose.yml` tại thư mục gốc:
+    * Định nghĩa service `lms-bff` (container name `lms-saas-bff`), map cổng `5045:8080`.
+    * Nạp cấu hình thông qua biến môi trường phân cấp của .NET (`ConnectionStrings__DefaultConnection`, `Jwt__SecretKey`, `Jwt__Issuer`, `Jwt__Audience`, `Jwt__ExpiryHours`, `Jwt__RefreshTokenExpiryDays`).
+  * Quản lý Secrets an toàn:
+    * Tạo `.env` tại thư mục gốc nạp `SUPABASE_CONNECTION_STRING` và `JWT_SECRET_KEY` thực tế (được `.gitignore` chặn an toàn).
+    * Tạo `.env.example` với dữ liệu mẫu cho Git tracking.
+  * Tối ưu `Program.cs`: Kiểm soát `app.UseHttpsRedirection()` chỉ chạy ngoài môi trường Development, tránh cảnh báo thiếu cổng HTTPS khi container lắng nghe HTTP 8080.
+  * Kiểm định chất lượng: `dotnet build BFF/LmsSaaS.slnx` thành công 100% (0 errors, 0 warnings); `dotnet test` vượt qua 21/21 unit test cases.
 * **Người thực hiện**: AI Agent & User.
 
 ---
