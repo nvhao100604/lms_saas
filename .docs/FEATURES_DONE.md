@@ -8,7 +8,7 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 
 | Trạng thái | Số lượng | Tỷ lệ |
 | :--- | :--- | :--- |
-| **Đã hoàn thành (Done)** | 19 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components) |
+| **Đã hoàn thành (Done)** | 20 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components, Courses & Classes Management BFF API) |
 | **Đang tiến hành (In Progress)** | 0 | 0% |
 | **Kế hoạch sắp tới (Todo)** | 0 | - |
 
@@ -253,6 +253,26 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
   * Xây dựng Client Component `client/src/components/courses/RevalidateCacheButton.tsx`: Kích hoạt Server Action xoay vòng cache on-demand với trạng thái loading spinner và hiển thị thời điểm revalidated.
   * Tích hợp vào `client/src/app/[tenantSlug]/courses/page.tsx`: Kết hợp mượt mà giữa Cached Server Component và SWR Course Management trong ranh giới `<Suspense>`.
   * Kiểm định chất lượng: `pnpm --filter client run build` thành công 100% (Turbopack, TypeScript 0 lỗi, nhận diện `ƒ Proxy (Middleware)`); `dotnet test` đạt 21/21 passed (100%).
+### [2026-10-25] Triển khai Phân hệ Quản lý Khóa học (Courses) & Lớp học (Classes) trên Backend .NET 10 (BFF)
+* **Mô tả**: Thiết lập toàn bộ API quản lý Khóa học (`Courses`) và Lớp học (`Classes`) trong tầng Backend BFF (.NET 10, Clean Architecture) với cơ chế HTTP PATCH tự động bằng Reflection Dictionary, kiểm soát hạn ngạch gói cước (`MaxClassesLimit Enforcement`), thuật toán sinh buổi học tự động (`ClassSessions`), phát hiện va chạm lịch dạy của giảng viên (`Conflict Detection`) và bảo vệ toàn vẹn bằng Database Transaction.
+* **Kết quả**:
+  * Bổ sung trạng thái `Cancelled = 4` cho enum [ClassStatus.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/Enums/ClassStatus.cs).
+  * Xây dựng extension method reflection [PatchExtensions.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/Common/PatchExtensions.cs) hỗ trợ `ToPatchDictionary()` tự động loại trừ `null`, `.Trim()` chuỗi và tích hợp trực tiếp với `db.Entry(entity).CurrentValues.SetValues(patchDictionary)`.
+  * Xóa bỏ quy ước `Dto` cũ, chuẩn hóa 100% mô hình request/response theo vai trò:
+    - Khóa học: [CourseResponse.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Courses/CourseResponse.cs), [CreateCourseRequest.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Courses/CreateCourseRequest.cs), [PatchCourseRequest.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Courses/PatchCourseRequest.cs).
+    - Lớp học: [ClassResponse.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Classes/ClassResponse.cs), [ClassSessionResponse.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Classes/ClassSessionResponse.cs), [ClassScheduleConfigRequest.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Classes/ClassScheduleConfigRequest.cs), [CreateClassRequest.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Classes/CreateClassRequest.cs), [PatchClassRequest.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Classes/PatchClassRequest.cs).
+  * Định nghĩa interface [IScheduleGeneratorService.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/Common/IScheduleGeneratorService.cs) và triển khai [ScheduleGeneratorService.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Infrastructure/Services/ScheduleGeneratorService.cs) đăng ký vào DI Container qua `AddScoped`.
+  * Xây dựng [CoursesController.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Api/Controllers/CoursesController.cs) (`[Route("api/courses")]`):
+    - `GET /api/courses`, `GET /api/courses/{id:guid}`: Yêu cầu xác thực token trung tâm (`[Authorize]`).
+    - `POST /api/courses`, `PATCH /api/courses/{id:guid}`, `DELETE /api/courses/{id:guid}`: Phân quyền `[Authorize(Roles = "CenterAdmin")]`. Chặn xóa khóa học nếu đã có lớp học trực thuộc.
+  * Xây dựng [ClassesController.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Api/Controllers/ClassesController.cs) (`[Route("api/classes")]`):
+    - `GET /api/classes`, `GET /api/classes/{id:guid}`: Đọc dữ liệu lớp kèm quan hệ `Course`, `Teacher`, và `Sessions`.
+    - `POST /api/classes`: Thực thi nghiêm ngặt 4 quy tắc nghiệp vụ lõi: kiểm tra hạn ngạch `tenant.SubscriptionPlan.MaxClassesLimit`, sinh buổi học theo thứ trong tuần, phát hiện xung đột lịch dạy giảng viên (`newStart < existingEnd && newEnd > existingStart`), và bọc toàn bộ trong `db.Database.BeginTransactionAsync()` đảm bảo tính toàn vẹn (All-or-Nothing).
+    - `PATCH /api/classes/{id:guid}`: Cập nhật thông tin lớp học qua `ToPatchDictionary()`.
+  * Mở rộng kiểm thử tự động xUnit:
+    - [PatchExtensionsTests.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.UnitTests/Tests/PatchExtensionsTests.cs): 5 bài test xác minh trích xuất non-null, tự động trim, xử lý null request và cập nhật `CurrentValues.SetValues()`.
+    - [ScheduleGeneratorServiceTests.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.UnitTests/Tests/ScheduleGeneratorServiceTests.cs): 13 bài test xác minh sinh lịch đúng số buổi, bắt lỗi dữ liệu đầu vào và kiểm định thuật toán phát hiện va chạm thời gian.
+  * Kiểm định chất lượng: `dotnet build BFF/LmsSaaS.slnx` thành công 100% (0 errors, 0 warnings); `dotnet test BFF/LmsSaaS.slnx` vượt qua 39/39 unit test cases (tăng từ 21 lên 39 tests passed).
 * **Người thực hiện**: AI Agent & User.
 
 ---
@@ -277,7 +297,8 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 
 ### Giai đoạn 3: Phân hệ Quản trị & Khóa học (LMS Core)
 - [ ] Dashboard tổng quan (Thống kê học viên, doanh thu, khóa học).
-- [ ] Quản lý khóa học (Tạo khóa học, chương trình học, upload bài giảng).
+- [x] Backend API Quản lý Khóa học & Lớp học (`/api/courses`, `/api/classes`, kiểm soát hạn ngạch, sinh lịch học, chống trùng lịch).
+- [ ] Giao diện Client Quản lý Khóa học & Lớp học (Tạo khóa học, chương trình học, upload bài giảng).
 - [ ] Giao diện người học (Trang chi tiết khóa học, trình phát video bài giảng, theo dõi tiến độ).
 
 ### Giai đoạn 4: Đánh giá & Thanh toán

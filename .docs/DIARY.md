@@ -700,3 +700,86 @@ Tài liệu này ghi lại toàn bộ lịch sử các phiên làm việc, nhữ
   - Khác với cơ chế fetch cache cũ của Next.js 14/15 (`unstable_cache` hoặc fetch options), directive `"use cache"` hoạt động ở cấp độ JSX/component hoặc hàm tính toán độc lập, cho phép Next.js biên dịch trước (prerender) khung tĩnh của component và chỉ làm mới khi tag bị hủy hiệu lực hoặc hết hạn theo profile `cacheLife`.
 * **Sự kết hợp giữa Server Cache & Client SWR**:
   - Trang khóa học được tổ chức phân tầng rõ rệt: phần giáo trình/chương trình đào tạo ít biến động được phục vụ siêu tốc qua Server Cache Component (`CachedCourseCatalog`), trong khi các tác vụ quản trị, tìm kiếm trực tiếp và phân trang tức thời vẫn được vận hành mượt mà bởi Client SWR (`ExampleCourseList`).
+
+---
+
+## [2026-10-25] Triển khai Phân hệ Quản lý Khóa học (Courses) & Lớp học (Classes) trên Backend .NET 10 (BFF)
+
+### Mục tiêu trong phiên làm việc
+* Triển khai hoàn chỉnh toàn bộ phân hệ Quản lý Khóa học (`Courses`) và Lớp học (`Classes`) trong tầng BFF .NET 10 theo mô hình Clean Architecture và cơ sở dữ liệu PostgreSQL Supabase.
+* Thiết lập cơ chế `HTTP PATCH` tự động thông qua Extension Method Reflection Dictionary, tích hợp trực tiếp vào `EF Core CurrentValues.SetValues()` nhằm loại bỏ mã lệnh thủ công.
+* Chuẩn hóa toàn bộ mô hình giao tiếp API theo vai trò tường minh: `Create[Entity]Request`, `Patch[Entity]Request` và `[Entity]Response`, loại bỏ hoàn toàn tiền tố/hậu tố `Dto` chung chung.
+* Hiện thực hóa 4 quy tắc nghiệp vụ cốt lõi:
+  1. Kiểm soát hạn ngạch gói cước trung tâm (`MaxClassesLimit Enforcement`).
+  2. Thuật toán tự động sinh danh sách buổi học (`ClassSessions`) theo thứ trong tuần và khung giờ chuẩn UTC.
+  3. Thuật toán phát hiện xung đột lịch dạy của giảng viên (`Conflict Detection`).
+  4. Quản lý giao dịch nguyên tử (`Database Transaction` - All-or-Nothing).
+* Mở rộng bộ kiểm thử tự động xUnit cho các tiện ích và logic nghiệp vụ mới, đảm bảo 100% test pass.
+
+### Các công việc đã thực hiện
+1. **Cập nhật Enum Nghiệp vụ (`LmsSaaS.Core/Enums/ClassStatus.cs`)**:
+   - Bổ sung giá trị `Cancelled = 4` phục vụ việc loại trừ các lớp đã hủy khi kiểm tra va chạm lịch giảng viên.
+2. **Xây dựng Tiện ích `PatchExtensions` (`LmsSaaS.Core/Common/PatchExtensions.cs`)**:
+   - Xây dựng phương thức mở rộng `ToPatchDictionary<T>()` sử dụng Reflection duyệt qua các thuộc tính public instance có khả năng đọc.
+   - Tự động bỏ qua các trường mang giá trị `null` và tự động gọi `.Trim()` đối với các giá trị kiểu chuỗi `string`.
+3. **Chuẩn hóa Mô hình Request / Response**:
+   - **Khóa học (`LmsSaaS.Core/DTOs/Courses/`)**:
+     + Xóa bỏ file `CourseDto.cs` cũ.
+     + Tạo `CourseResponse.cs` (record chứa Id, Title, Description, TuitionFee, IsActive, CreatedAt).
+     + Tạo `CreateCourseRequest.cs` (Data Annotations validation cho Title, Description, TuitionFee).
+     + Tạo `PatchCourseRequest.cs` (tất cả các trường là nullable tương đương `Partial<T>`).
+   - **Lớp học (`LmsSaaS.Core/DTOs/Classes/`)**:
+     + Tạo `ClassSessionResponse.cs` (record thông tin buổi học Id, SessionNumber, Topic, StartTime, EndTime).
+     + Tạo `ClassResponse.cs` (record thông tin lớp, tên khóa học, tên giảng viên, trạng thái, tổng số buổi và danh sách chi tiết các buổi học).
+     + Tạo `ClassScheduleConfigRequest.cs` (chứa `DaysOfWeek`, `StartTime`, `EndTime`).
+     + Tạo `CreateClassRequest.cs` (chứa CourseId, TeacherId, Name, RoomName, StartDate, EndDate, MaxCapacity, Schedule).
+     + Tạo `PatchClassRequest.cs` (Name, RoomName, MaxCapacity, Status).
+4. **Xây dựng và Đăng ký Dịch vụ Sinh lịch học (`IScheduleGeneratorService` & `ScheduleGeneratorService`)**:
+   - Khai báo interface tại `LmsSaaS.Core/Common/IScheduleGeneratorService.cs`.
+   - Hiện thực tại `LmsSaaS.Infrastructure/Services/ScheduleGeneratorService.cs`:
+     + Xác thực chặt chẽ: `startDate <= endDate`, `schedule.StartTime < schedule.EndTime`, danh sách `DaysOfWeek` không rỗng.
+     + Lặp qua từng ngày trong khoảng, kiểm tra ngày trong tuần khớp với `DaysOfWeek`, quy đổi `DateOnly` + `TimeOnly` sang `DateTimeOffset` UTC với `TimeSpan.Zero`.
+     + Đánh số thứ tự buổi học `SessionNumber` tăng dần từ 1 và gán `Topic = "Buổi {sessionNumber}"`.
+   - Đăng ký `services.AddScoped<IScheduleGeneratorService, ScheduleGeneratorService>()` trong `LmsSaaS.Infrastructure/DependencyInjection.cs`.
+5. **Xây dựng API Controllers (`LmsSaaS.Api/Controllers/`)**:
+   - **`CoursesController` (`/api/courses`)**:
+     + `GET /api/courses`: Trả về danh sách khóa học thuộc trung tâm qua `ApiResponse<IReadOnlyList<CourseResponse>>`.
+     + `GET /api/courses/{id:guid}`: Trả về chi tiết khóa học.
+     + `POST /api/courses` (`[Authorize(Roles = "CenterAdmin")]`): Tạo mới khóa học, tự động gắn `TenantId`.
+     + `PATCH /api/courses/{id:guid}` (`[Authorize(Roles = "CenterAdmin")]`): Cập nhật từng phần bằng `ToPatchDictionary()` và `db.Entry(course).CurrentValues.SetValues(patchValues)`.
+     + `DELETE /api/courses/{id:guid}` (`[Authorize(Roles = "CenterAdmin")]`): Chặn xóa nếu khóa học đã có lớp học trực thuộc (`db.Classes.AnyAsync`).
+   - **`ClassesController` (`/api/classes`)**:
+     + `GET /api/classes`: Đọc danh sách lớp học kèm quan hệ `Course`, `Teacher`, và `Sessions`.
+     + `GET /api/classes/{id:guid}`: Đọc chi tiết lớp học kèm toàn bộ danh sách các buổi học `ClassSessions`.
+     + `POST /api/classes` (`[Authorize(Roles = "CenterAdmin")]`):
+       - Kiểm tra hạn ngạch lớp học: đếm số lớp hiện tại so với `tenant.SubscriptionPlan.MaxClassesLimit`. Nếu vượt quá hạn ngạch trả về 400 Bad Request kèm thông báo chi tiết.
+       - Sinh danh sách buổi học qua `scheduleGenerator.GenerateSessions()`.
+       - Phát hiện va chạm lịch giảng viên: truy vấn các buổi dạy của giảng viên trong các lớp chưa hủy (`Status != ClassStatus.Cancelled`) và kiểm tra điều kiện va chạm thời gian `newStart < existingEnd && newEnd > existingStart`.
+       - Mở giao dịch nguyên tử `await using var transaction = await dbContext.Database.BeginTransactionAsync()`, thêm `Class` và danh sách `ClassSessions`, sau đó commit toàn vẹn.
+     + `PATCH /api/classes/{id:guid}` (`[Authorize(Roles = "CenterAdmin")]`): Cập nhật thông tin hành chính của lớp học bằng `ToPatchDictionary()`.
+6. **Xây dựng Bộ Kiểm thử Tự động xUnit (`LmsSaaS.UnitTests/Tests/`)**:
+   - **`PatchExtensionsTests.cs` (5 bài test)**:
+     + Kiểm tra bắt lỗi `ArgumentNullException` khi request null.
+     + Kiểm tra trả về dictionary rỗng khi mọi thuộc tính là null.
+     + Kiểm tra trích xuất chính xác các thuộc tính khác null.
+     + Kiểm tra tự động `.Trim()` khoảng trắng đầu/cuối chuỗi.
+     + Kiểm tra tương thích với `EF Core CurrentValues.SetValues()` trên cả thực thể `Course` và `Class`.
+   - **`ScheduleGeneratorServiceTests.cs` (13 bài test)**:
+     + Kiểm tra sinh chính xác số lượng buổi học (6 buổi trong 2 tuần Thứ 2, 4, 6), đánh số thứ tự tuần tự, múi giờ UTC chuẩn.
+     + Kiểm tra bắt lỗi khi ngày bắt đầu sau ngày kết thúc.
+     + Kiểm tra bắt lỗi khi giờ bắt đầu sau giờ kết thúc.
+     + Kiểm tra bắt lỗi khi danh sách thứ trong tuần rỗng.
+     + Kiểm tra trả về danh sách rỗng khi không có ngày nào trong khoảng khớp với thứ trong tuần.
+     + Kiểm tra toàn diện thuật toán phát hiện va chạm thời gian thông qua 7 kịch bản giao thoa (giao thoa đầu, giao thoa cuối, nằm trọn bên trong, bao bọc bên ngoài, tiếp giáp trước, tiếp giáp sau, khác ngày).
+7. **Kiểm tra và Xác minh Chất lượng**:
+   - `dotnet build BFF/LmsSaaS.slnx`: Biên dịch thành công 100%, 0 Error, 0 Warning.
+   - `dotnet test BFF/LmsSaaS.slnx`: 39/39 bài test vượt qua thành công (100% Passed).
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Cơ chế HTTP PATCH tự động qua Dictionary**:
+  - Việc chuyển đổi `PatchRequest` thành dictionary thông qua reflection kết hợp với `CurrentValues.SetValues(dictionary)` của EF Core giúp giải quyết bài toán cập nhật từng phần (`HTTP PATCH`) một cách thanh thoát nhất. EF Core Change Tracker chỉ đánh dấu trạng thái `IsModified = true` cho đúng các cột có mặt trong dictionary, giúp câu lệnh SQL `UPDATE` sinh ra chỉ chứa đúng các cột cần cập nhật, tối ưu hiệu năng I/O và triệt tiêu hàng chục dòng lệnh gán `if (request.Field is not null)` thủ công.
+* **Loại bỏ Hậu tố `Dto` chung chung**:
+  - Tách bạch rõ rệt giữa Command Input (`Create...Request`, `Patch...Request`) và Query Output (`...Response`) là một trong những chuẩn mực quan trọng nhất của kiến trúc CQS / Clean Architecture. Nhờ vậy, API contracts không bị ràng buộc lỏng lẻo, tạo điều kiện thuận lợi cho việc sinh OpenAPI Swagger documentation và auto-generate TypeScript types ở phía Frontend.
+* **Tính toàn vẹn Dữ liệu với Transaction**:
+  - Việc tạo một lớp học luôn đi liền với việc sinh ra hàng chục buổi học (`ClassSession`). Việc bọc toàn bộ khối công việc trong một `IDbContextTransaction` đảm bảo nguyên tắc All-or-Nothing: nếu có bất kỳ sự cố nào xảy ra trong quá trình ghi dữ liệu hoặc kiểm tra va chạm, toàn bộ dữ liệu sẽ tự động rollback, bảo vệ cơ sở dữ liệu không bị rơi vào trạng thái phân mảnh mồ côi (orphaned records).
+

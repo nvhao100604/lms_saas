@@ -28,6 +28,7 @@ public static class DependencyInjection
             options.UseNpgsql(connectionString));
 
         services.AddScoped<ICurrentTenantService, CurrentTenantService>();
+        services.AddScoped<IScheduleGeneratorService, ScheduleGeneratorService>();
 
         // 1. Đăng ký Options Pattern và Service cho Jwt & Tenant
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
