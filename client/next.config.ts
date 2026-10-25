@@ -4,6 +4,28 @@ const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
+  cacheLife: {
+    frequent: {
+      stale: 15,
+      revalidate: 30,
+      expire: 300,
+    },
+    dashboard: {
+      stale: 60,
+      revalidate: 300,
+      expire: 3600,
+    },
+    courses: {
+      stale: 300,
+      revalidate: 900,
+      expire: 86400,
+    },
+    static: {
+      stale: 3600,
+      revalidate: 86400,
+      expire: 604800,
+    },
+  },
   reactCompiler: true,
   turbopack: {
     rules: {

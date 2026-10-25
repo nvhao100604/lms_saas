@@ -8,7 +8,7 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 
 | Trạng thái | Số lượng | Tỷ lệ |
 | :--- | :--- | :--- |
-| **Đã hoàn thành (Done)** | 18 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10) |
+| **Đã hoàn thành (Done)** | 19 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components) |
 | **Đang tiến hành (In Progress)** | 0 | 0% |
 | **Kế hoạch sắp tới (Todo)** | 0 | - |
 
@@ -235,6 +235,24 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
     * Tạo `.env.example` với dữ liệu mẫu cho Git tracking.
   * Tối ưu `Program.cs`: Kiểm soát `app.UseHttpsRedirection()` chỉ chạy ngoài môi trường Development, tránh cảnh báo thiếu cổng HTTPS khi container lắng nghe HTTP 8080.
   * Kiểm định chất lượng: `dotnet build BFF/LmsSaaS.slnx` thành công 100% (0 errors, 0 warnings); `dotnet test` vượt qua 21/21 unit test cases.
+* **Người thực hiện**: AI Agent & User.
+ 
+### [2026-10-21] Chuẩn hóa Quy ước Next.js 16 Proxy (`proxy.ts`) & Cấu hình Toàn diện Cache Components
+* **Mô tả**: Chuyển đổi file middleware sang quy ước chuẩn mới của Next.js 16 (`src/proxy.ts`), cấu hình hệ thống Cache Components với hồ sơ thời gian sống `cacheLife`, quản lý cache tags tập trung (`CACHE_TAGS`), Server Actions làm mới cache (`updateTag`, `revalidateTag`) và xây dựng Server Component mẫu `CachedCourseCatalog` cho phân hệ LMS.
+* **Kết quả**:
+  * Chuyển đổi `client/src/middleware.ts` ➔ `client/src/proxy.ts`, export hàm `proxy` và `default proxy`, loại bỏ triệt để cảnh báo deprecation của Next.js 16.
+  * Cập nhật `client/next.config.ts`: Bổ sung cấu hình `cacheLife` với 4 profile tối ưu:
+    - `frequent`: `{ stale: 15, revalidate: 30, expire: 300 }` (thông báo, điểm danh).
+    - `dashboard`: `{ stale: 60, revalidate: 300, expire: 3600 }` (chỉ số thống kê KPI).
+    - `courses`: `{ stale: 300, revalidate: 900, expire: 86400 }` (danh mục khóa học, giáo trình).
+    - `static`: `{ stale: 3600, revalidate: 86400, expire: 604800 }` (branding, cài đặt tenant).
+  * Mở rộng Type Definition tại `client/src/types/cache.d.ts`: Augmentation interface `CacheLifeProfiles` trong `"next/cache"` đảm bảo type-safety 100% khi gọi `cacheLife()`.
+  * Tạo hằng số `client/src/constants/cacheTags.ts`: Quản lý tập trung các cache tag theo tenant (`courses`, `courseDetail`, `dashboard`, `classes`, `settings`).
+  * Tạo Server Actions `client/src/actions/cacheActions.ts`: Hỗ trợ `revalidateCoursesAction`, `revalidateDashboardAction` và `revalidateTagAction` sử dụng hàm `updateTag` chuẩn xác của Next.js 16 cho Server Actions.
+  * Xây dựng Server Component `client/src/components/courses/CachedCourseCatalog.tsx`: Ứng dụng directive `"use cache"`, `cacheLife("courses")`, `cacheTag()`, hiển thị huy hiệu profile cache, timestamp kết xuất và thẻ khóa học chuẩn UX không emoji.
+  * Xây dựng Client Component `client/src/components/courses/RevalidateCacheButton.tsx`: Kích hoạt Server Action xoay vòng cache on-demand với trạng thái loading spinner và hiển thị thời điểm revalidated.
+  * Tích hợp vào `client/src/app/[tenantSlug]/courses/page.tsx`: Kết hợp mượt mà giữa Cached Server Component và SWR Course Management trong ranh giới `<Suspense>`.
+  * Kiểm định chất lượng: `pnpm --filter client run build` thành công 100% (Turbopack, TypeScript 0 lỗi, nhận diện `ƒ Proxy (Middleware)`); `dotnet test` đạt 21/21 passed (100%).
 * **Người thực hiện**: AI Agent & User.
 
 ---

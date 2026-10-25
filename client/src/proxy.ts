@@ -4,8 +4,8 @@ import { COOKIE_NAMES, ENV_CONFIG } from "@/constants/config";
 import type { AuthApiResponse, RefreshTokenResponse } from "@/types/auth";
 
 /**
- * Giải mã phần Base64URL Payload của JWT token mà không dùng thư viện ngoài
- * Đảm bảo tương thích hoàn hảo và tối ưu hiệu năng trên Edge/Node Runtime
+ * Decode JWT base64url payload without external libraries.
+ * Edge-compatible and highly performant.
  */
 export function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
@@ -30,7 +30,7 @@ export function decodeJwtPayload(token: string): Record<string, unknown> | null 
 }
 
 /**
- * Điều hướng về trang đăng nhập và dọn dẹp toàn bộ cookies xác thực
+ * Redirect user to login page and clean up authentication cookies.
  */
 function redirectToLogin(request: NextRequest, pathname: string): NextResponse {
   const loginUrl = new URL(ROUTES.AUTH.LOGIN, request.url);
@@ -42,36 +42,40 @@ function redirectToLogin(request: NextRequest, pathname: string): NextResponse {
   return response;
 }
 
-export async function middleware(request: NextRequest): Promise<NextResponse> {
+/**
+ * Next.js 16 Proxy Convention (replaces deprecated middleware convention).
+ * Protects tenant routes, validates tokens, and performs silent refresh token rotation.
+ */
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
-  // Bóc tách slug của trung tâm từ URL (ví dụ: /apex-english/dashboard -> apex-english)
+  // Extract tenant slug from URL (e.g. /apex-english/dashboard -> apex-english)
   const segments = pathname.split("/").filter(Boolean);
   const requestedTenantSlug = segments[0];
 
-  // Nếu là trang chủ hoặc không có requestedTenantSlug, cho phép tiếp tục
+  // Allow home page or requests without tenant slug to proceed
   if (!requestedTenantSlug) {
     return NextResponse.next();
   }
 
-  // 1. Đọc cookies từ request
+  // 1. Read cookies from request
   const accessToken = request.cookies.get(COOKIE_NAMES.ACCESS_TOKEN)?.value;
   const refreshToken = request.cookies.get(COOKIE_NAMES.REFRESH_TOKEN)?.value;
 
-  // 2. Kiểm tra tính hợp lệ và thời hạn của access_token
+  // 2. Validate access_token expiration
   const payload = accessToken ? decodeJwtPayload(accessToken) : null;
   const currentTimeInSeconds = Math.floor(Date.now() / 1000);
   const exp = typeof payload?.exp === "number" ? payload.exp : 0;
   const isAccessTokenValid = Boolean(payload && exp > currentTimeInSeconds);
 
-  // 3. Trường hợp access_token không có hoặc đã hết hạn -> Silent Refresh Token Rotation
+  // 3. When access_token is missing or expired: Perform Silent Refresh Token Rotation
   if (!isAccessTokenValid) {
-    // Nếu KHÔNG có refresh_token -> chuyển hướng về Login
+    // If no refresh token exists, redirect to login
     if (!refreshToken) {
       return redirectToLogin(request, pathname);
     }
 
-    // Nếu CÓ refresh_token -> Tự động gọi sang .NET BFF để xoay vòng token (Silent Refresh)
+    // Attempt silent refresh via .NET BFF
     try {
       const refreshResponse = await fetch(`${ENV_CONFIG.DOTNET_API_URL}/api/auth/refresh`, {
         method: "POST",
@@ -97,7 +101,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
           const isProd = process.env.NODE_ENV === "production";
           let response: NextResponse;
 
-          // Kiểm tra Context Mismatch: Nếu slug yêu cầu khác với slug của token vừa refresh
+          // Context Mismatch check: Ensure token matches requested tenant
           if (
             tenantSlug &&
             requestedTenantSlug.toLowerCase() !== tenantSlug.toLowerCase()
@@ -108,7 +112,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
             );
             response = NextResponse.redirect(correctDashboardUrl);
           } else {
-            // Cập nhật cookie header cho downstream request của Server Components
+            // Forward refreshed cookies to downstream Server Components
             const requestHeaders = new Headers(request.headers);
             requestHeaders.set(
               "cookie",
@@ -121,8 +125,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
             });
           }
 
-          // Đính kèm cặp token mới vào Set-Cookie của response gửi về trình duyệt
-          // Thời hạn maxAge đồng bộ trực tiếp từ Backend .NET (Single Source of Truth)
+          // Attach fresh tokens to response Set-Cookie headers
           response.cookies.set(COOKIE_NAMES.ACCESS_TOKEN, newAccessToken, {
             httpOnly: true,
             secure: isProd,
@@ -145,18 +148,15 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
         }
       }
     } catch {
-      // Khi gặp lỗi kết nối tới .NET BFF, chuyển tiếp về trang Login an toàn
+      // If BFF communication fails, redirect to login safely
     }
 
-    // Nếu gọi refresh thất bại hoặc phản hồi không hợp lệ -> xóa sạch cookies và chuyển hướng về Login
     return redirectToLogin(request, pathname);
   }
 
-  // 4. Trường hợp access_token vẫn còn hạn:
-  // Lấy tenant_slug từ token claim (hỗ trợ cả tenant_slug lẫn tenantSlug)
+  // 4. Token is valid: check tenant context mismatch
   const tokenTenantSlug = (payload?.tenant_slug || payload?.tenantSlug) as string | undefined;
 
-  // Context Mismatch Check: Chống truy cập chéo giữa các trung tâm
   if (
     tokenTenantSlug &&
     requestedTenantSlug.toLowerCase() !== tokenTenantSlug.toLowerCase()
@@ -168,9 +168,10 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(correctDashboardUrl);
   }
 
-  // Token hoàn toàn hợp lệ và đúng ngữ cảnh trung tâm
   return NextResponse.next();
 }
+
+export default proxy;
 
 export const config = {
   matcher: [

@@ -655,3 +655,48 @@ Tài liệu này ghi lại toàn bộ lịch sử các phiên làm việc, nhữ
   - Việc cấu hình non-root user theo tiêu chuẩn mới của .NET ngăn ngừa các lỗ hổng container breakout hoặc leo thang đặc quyền (privilege escalation), đáp ứng chuẩn bảo mật cấp doanh nghiệp.
 * **Hierarchical Environment Overrides (`__`)**:
   - Tận dụng quy ước phân cấp chuẩn của ASP.NET Core (`ConnectionStrings__DefaultConnection` ánh xạ vào `ConnectionStrings:DefaultConnection`, `Jwt__SecretKey` ánh xạ vào `Jwt:SecretKey`). Cơ chế này tách rời hoàn toàn mã nguồn khỏi cấu hình nhạy cảm, giúp ứng dụng sẵn sàng triển khai mượt mà trên bất kỳ nền tảng đám mây nào (AWS ECS, Kubernetes, Azure Container Apps).
+
+---
+
+## [2026-10-21] Chuẩn hóa Quy ước Next.js 16 Proxy (`proxy.ts`) & Cấu hình Toàn diện Cache Components
+
+### Mục tiêu trong phiên làm việc
+* Di chuyển và nâng cấp quy ước `middleware.ts` sang `proxy.ts` theo chuẩn chính thức của Next.js 16.
+* Thiết lập hệ thống Cache Components đầy đủ với directive `"use cache"`, cấu hình các profiles `cacheLife`, mở rộng Type Augmentation cho TypeScript, quản lý `CACHE_TAGS` và Server Actions xoay vòng cache.
+* Xây dựng Server Component mẫu `CachedCourseCatalog` và nút làm mới cache on-demand cho phân hệ LMS.
+
+### Các công việc đã thực hiện
+1. **Chuyển đổi sang Next.js 16 Proxy Convention (`src/proxy.ts`)**:
+   - Chuyển `client/src/middleware.ts` thành `client/src/proxy.ts`.
+   - Cập nhật hàm xử lý từ `middleware` sang `export async function proxy(request: NextRequest)` và `export default proxy`.
+   - Xóa bỏ file `middleware.ts` cũ để tránh xung đột kép theo quy định của Next.js 16 (`Both middleware and proxy file detected`).
+   - Kiểm tra build xác nhận Next.js 16 biên dịch thành công route handler: `ƒ Proxy (Middleware)` không cảnh báo deprecation.
+2. **Cấu hình Cache Profiles (`client/next.config.ts`)**:
+   - Bổ sung cấu hình `cacheLife` cho 4 hồ sơ nghiệp vụ chuyên biệt:
+     + `frequent`: `{ stale: 15, revalidate: 30, expire: 300 }` (thông báo tức thời, dữ liệu điểm danh).
+     + `dashboard`: `{ stale: 60, revalidate: 300, expire: 3600 }` (chỉ số thống kê, biểu đồ KPI).
+     + `courses`: `{ stale: 300, revalidate: 900, expire: 86400 }` (danh mục khóa học, giáo trình).
+     + `static`: `{ stale: 3600, revalidate: 86400, expire: 604800 }` (cấu hình trung tâm, branding).
+   - Duy trì `cacheComponents: true` và `partialPrefetching: true`.
+3. **Mở rộng Type Augmentation (`client/src/types/cache.d.ts`)**:
+   - Sử dụng Declaration Merging trên module `"next/cache"` cho interface `CacheLifeProfiles`, đem lại gợi ý tự động (IntelliSense) và kiểm tra kiểu TypeScript 100% chặt chẽ khi gọi `cacheLife("courses")`.
+4. **Quản lý Cache Tags Tập trung (`client/src/constants/cacheTags.ts`)**:
+   - Khởi tạo hằng số `CACHE_TAGS` theo chuẩn DRY và Single Source of Truth cho các entities: `tenant`, `courses`, `courseDetail`, `dashboard`, `classes`, `settings`.
+5. **Triển khai Server Actions Xoay vòng Cache (`client/src/actions/cacheActions.ts`)**:
+   - Xây dựng các hàm Server Action `revalidateCoursesAction`, `revalidateDashboardAction` và `revalidateTagAction`.
+   - Sử dụng API `updateTag(tag)` tối ưu riêng cho Server Actions trong Next.js 16, mang lại trải nghiệm cập nhật ngay lập tức (read-your-own-writes semantics).
+6. **Xây dựng Cache Component & Tích hợp Trang Khóa Học**:
+   - Tạo Server Component `client/src/components/courses/CachedCourseCatalog.tsx`: Sử dụng `"use cache"`, `cacheLife("courses")`, `cacheTag()`, hiển thị huy hiệu profile, timestamp cache và danh thiếp khóa học chuẩn UX không emoji.
+   - Tạo Client Component `client/src/components/courses/RevalidateCacheButton.tsx`: Cho phép tương tác xoay vòng cache on-demand với SVG loading indicator.
+   - Nâng cấp `client/src/app/[tenantSlug]/courses/page.tsx`: Kết hợp mượt mà giữa Cached Server Component và SWR Course Management trong cùng ranh giới `<Suspense>`.
+7. **Kiểm tra và Xác minh Chất lượng**:
+   - `pnpm --filter client run build`: Turbopack biên dịch trong 1.5s, TypeScript 0 lỗi, 14/14 static & dynamic routes đạt chuẩn `◐ (Partial Prerender)`.
+   - `dotnet test BFF/LmsSaaS.slnx`: 21/21 Unit tests passed (100%).
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Next.js 16 Proxy Convention**:
+  - Việc chuyển từ `middleware.ts` sang `proxy.ts` phản ánh đúng bản chất kỹ thuật của tầng mạng này (Node/Edge forwarder & route filter), đón đầu chuẩn chính thức của Next.js 16 và loại bỏ hoàn toàn cảnh báo mã lỗi thời.
+* **Component-Level Caching với `"use cache"` & PPR**:
+  - Khác với cơ chế fetch cache cũ của Next.js 14/15 (`unstable_cache` hoặc fetch options), directive `"use cache"` hoạt động ở cấp độ JSX/component hoặc hàm tính toán độc lập, cho phép Next.js biên dịch trước (prerender) khung tĩnh của component và chỉ làm mới khi tag bị hủy hiệu lực hoặc hết hạn theo profile `cacheLife`.
+* **Sự kết hợp giữa Server Cache & Client SWR**:
+  - Trang khóa học được tổ chức phân tầng rõ rệt: phần giáo trình/chương trình đào tạo ít biến động được phục vụ siêu tốc qua Server Cache Component (`CachedCourseCatalog`), trong khi các tác vụ quản trị, tìm kiếm trực tiếp và phân trang tức thời vẫn được vận hành mượt mà bởi Client SWR (`ExampleCourseList`).
