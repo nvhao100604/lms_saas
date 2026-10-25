@@ -1,2 +1,3 @@
 export * from "./useDebounce";
-export * from "./useExampleCourses";
+export * from "./useCourses";
+export * from "./useClasses";

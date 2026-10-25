@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import { WorkspaceSectionView, SectionLoadingFallback } from "@/components/layout";
+import { ClassesView } from "@/components/classes";
+import { SectionLoadingFallback } from "@/components/layout";
 
 export interface ClassesPageProps {
   params: Promise<{
@@ -9,7 +10,21 @@ export interface ClassesPageProps {
 
 async function ClassesContent({ params }: ClassesPageProps) {
   const { tenantSlug } = await params;
-  return <WorkspaceSectionView sectionKey="classes" tenantSlug={tenantSlug} />;
+
+  return (
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <div className="border-b border-neutral-200 pb-3 dark:border-neutral-800">
+        <h2 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+          Quản lý Lớp học & Lịch giảng dạy
+        </h2>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+          Thiết lập lớp học mới với cơ chế tự động rải lịch buổi học (ClassSessions), kiểm soát hạn ngạch gói cước và chống trùng lịch giảng viên.
+        </p>
+      </div>
+
+      <ClassesView tenantSlug={tenantSlug} />
+    </div>
+  );
 }
 
 export default function ClassesPage({ params }: ClassesPageProps) {

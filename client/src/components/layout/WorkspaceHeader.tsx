@@ -7,6 +7,21 @@ import { ROUTES } from "@/constants/routes";
 import { useAppSelector } from "@/store/hooks";
 import { LanguageSwitcher } from "@/components/common";
 import { authService } from "@/services/authService";
+import {
+  AppBar,
+  Toolbar,
+  Box,
+  IconButton,
+  Typography,
+  Chip,
+  Button,
+  CircularProgress,
+  Tooltip,
+} from "@mui/material";
+import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
+import BusinessRoundedIcon from "@mui/icons-material/BusinessRounded";
+import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
+import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 
 export interface WorkspaceHeaderProps {
   tenantSlug: string;
@@ -41,142 +56,146 @@ export function WorkspaceHeader({
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white/85 px-4 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/85 sm:px-6">
-      {/* Left: Mobile trigger & Workspace badge */}
-      <div className="flex items-center gap-3">
-        {/* Mobile menu button */}
-        <button
-          type="button"
-          onClick={onToggleMobileMenu}
-          aria-label={t.navigation.toggleMobileMenu}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 lg:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-        >
-          <svg
-            className="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            aria-hidden="true"
+    <AppBar
+      position="sticky"
+      color="inherit"
+      elevation={0}
+      sx={{
+        borderBottom: "1px solid",
+        borderColor: "divider",
+        bgcolor: "rgba(255, 255, 255, 0.85)",
+        backdropFilter: "blur(8px)",
+        zIndex: (theme) => theme.zIndex.drawer + 1,
+      }}
+    >
+      <Toolbar
+        sx={{
+          minHeight: { xs: 56, sm: 64 },
+          px: { xs: 2, sm: 3 },
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        {/* Left: Mobile Trigger & Workspace Badge */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <IconButton
+            edge="start"
+            color="inherit"
+            aria-label={t.navigation.toggleMobileMenu}
+            onClick={onToggleMobileMenu}
+            sx={{
+              display: { lg: "none" },
+              border: "1px solid",
+              borderColor: "divider",
+              borderRadius: 2,
+              p: 0.75,
+            }}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-          </svg>
-        </button>
+            <MenuRoundedIcon fontSize="small" />
+          </IconButton>
 
-        {/* Workspace Badge / Breadcrumb */}
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900">
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+            <Box
+              sx={{
+                width: 32,
+                height: 32,
+                borderRadius: 2,
+                bgcolor: "primary.50",
+                color: "primary.main",
+                border: "1px solid",
+                borderColor: "primary.100",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+              <BusinessRoundedIcon sx={{ fontSize: 18 }} />
+            </Box>
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  display: { xs: "none", sm: "inline" },
+                  color: "text.secondary",
+                  fontWeight: 500,
+                }}
+              >
+                {t.navigation.workspaceBadge}:
+              </Typography>
+              <Chip
+                label={formattedTenantTitle}
+                size="small"
+                sx={{
+                  fontWeight: 600,
+                  fontSize: "0.75rem",
+                  bgcolor: "grey.100",
+                  border: "1px solid",
+                  borderColor: "divider",
+                  "& .MuiChip-label": { px: 1.25 },
+                }}
               />
-            </svg>
-          </div>
+            </Box>
+          </Box>
+        </Box>
 
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:inline text-xs font-medium text-slate-500 dark:text-slate-400">
-              {t.navigation.workspaceBadge}:
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-900 dark:bg-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {formattedTenantTitle}
-            </span>
-          </div>
-        </div>
-      </div>
+        {/* Right: Language, Switch Workspace, Logout */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <LanguageSwitcher />
 
-      {/* Right: Actions, Language Switcher, Switch Workspace, Logout */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        {/* Language Switcher */}
-        <LanguageSwitcher />
+          <Tooltip title={t.navigation.switchWorkspace}>
+            <Button
+              component={Link}
+              href={ROUTES.AUTH.LOGIN}
+              variant="outlined"
+              size="small"
+              startIcon={<SwapHorizRoundedIcon sx={{ fontSize: 16 }} />}
+              sx={{
+                borderColor: "divider",
+                color: "text.primary",
+                "&:hover": {
+                  bgcolor: "grey.50",
+                  borderColor: "grey.400",
+                },
+                display: { xs: "none", sm: "inline-flex" },
+                py: 0.6,
+                px: 1.5,
+              }}
+            >
+              {t.navigation.switchWorkspace}
+            </Button>
+          </Tooltip>
 
-        {/* Switch Workspace Button */}
-        <Link
-          href={ROUTES.AUTH.LOGIN}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-          title={t.navigation.switchWorkspace}
-        >
-          <svg
-            className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            aria-hidden="true"
+          <Button
+            variant="outlined"
+            size="small"
+            color="error"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            startIcon={
+              isLoggingOut ? (
+                <CircularProgress size={14} color="inherit" />
+              ) : (
+                <LogoutRoundedIcon sx={{ fontSize: 16 }} />
+              )
+            }
+            sx={{
+              py: 0.6,
+              px: 1.5,
+              borderColor: "error.light",
+              bgcolor: "rgba(239, 68, 68, 0.04)",
+              "&:hover": {
+                bgcolor: "rgba(239, 68, 68, 0.1)",
+                borderColor: "error.main",
+              },
+            }}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-            />
-          </svg>
-          <span className="hidden md:inline">{t.navigation.switchWorkspace}</span>
-        </Link>
-
-        {/* Logout Button */}
-        <button
-          type="button"
-          onClick={handleLogout}
-          disabled={isLoggingOut}
-          aria-label={t.navigation.logout}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200/80 bg-rose-50/60 px-2.5 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-100 hover:text-rose-800 disabled:opacity-50 disabled:pointer-events-none dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
-          title={t.navigation.logout}
-        >
-          {isLoggingOut ? (
-            <svg
-              className="h-3.5 w-3.5 animate-spin text-rose-600 dark:text-rose-400"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-              />
-            </svg>
-          ) : (
-            <svg
-              className="h-3.5 w-3.5 text-rose-600 dark:text-rose-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-              />
-            </svg>
-          )}
-          <span className="hidden md:inline">
             {isLoggingOut ? t.navigation.loggingOut : t.navigation.logout}
-          </span>
-        </button>
-      </div>
-    </header>
+          </Button>
+        </Box>
+      </Toolbar>
+    </AppBar>
   );
 }
 

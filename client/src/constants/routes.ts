@@ -33,5 +33,16 @@ export const ROUTES = {
       REFRESH: "/api/auth/refresh",
       LOGOUT: "/api/auth/logout",
     },
+    COURSES: {
+      ROOT: "/api/courses",
+      DETAIL: (id: string) => `/api/courses/${id}`,
+    },
+    CLASSES: {
+      ROOT: "/api/classes",
+      DETAIL: (id: string) => `/api/classes/${id}`,
+    },
+    MEMBERS: {
+      TEACHERS: "/api/members/teachers",
+    },
   },
 } as const;

@@ -35,6 +35,23 @@ const nextConfig: NextConfig = {
       },
     },
   },
+  async rewrites() {
+    const backendUrl = process.env.DOTNET_API_URL || "http://localhost:5045";
+    return [
+      {
+        source: "/api/courses/:path*",
+        destination: `${backendUrl}/api/courses/:path*`,
+      },
+      {
+        source: "/api/classes/:path*",
+        destination: `${backendUrl}/api/classes/:path*`,
+      },
+      {
+        source: "/api/members/:path*",
+        destination: `${backendUrl}/api/members/:path*`,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

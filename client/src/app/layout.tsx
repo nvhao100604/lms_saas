@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import StoreProvider from "@/store/StoreProvider";
-import { SwrProvider } from "@/providers";
+import { SwrProvider, MuiProvider } from "@/providers";
 import "./globals.css";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -37,7 +37,9 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-sans">
         <Suspense fallback={null}>
           <StoreProvider>
-            <SwrProvider>{children}</SwrProvider>
+            <MuiProvider>
+              <SwrProvider>{children}</SwrProvider>
+            </MuiProvider>
           </StoreProvider>
         </Suspense>
       </body>

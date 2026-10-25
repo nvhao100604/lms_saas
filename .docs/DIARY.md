@@ -783,3 +783,119 @@ Tài liệu này ghi lại toàn bộ lịch sử các phiên làm việc, nhữ
 * **Tính toàn vẹn Dữ liệu với Transaction**:
   - Việc tạo một lớp học luôn đi liền với việc sinh ra hàng chục buổi học (`ClassSession`). Việc bọc toàn bộ khối công việc trong một `IDbContextTransaction` đảm bảo nguyên tắc All-or-Nothing: nếu có bất kỳ sự cố nào xảy ra trong quá trình ghi dữ liệu hoặc kiểm tra va chạm, toàn bộ dữ liệu sẽ tự động rollback, bảo vệ cơ sở dữ liệu không bị rơi vào trạng thái phân mảnh mồ côi (orphaned records).
 
+---
+
+## [2026-10-25] Triển khai Toàn diện Types, Services, SWR Hooks & Giao diện Quản lý Khóa học & Lớp học (Client Next.js 16)
+
+### Mục tiêu trong phiên làm việc
+* Xây dựng trọn vẹn toàn bộ hệ thống Types, Thin Service Layer, Custom SWR Hooks và giao diện Quản lý Khóa học (`CoursesView`) và Lớp học (`ClassesView`) trong thư mục `client` (Next.js 16, TypeScript, Tailwind CSS, SWR, Axios).
+* Kết nối trực tiếp và đồng bộ 100% với `CoursesController` và `ClassesController` trên Backend BFF .NET 10.
+* Tích hợp cơ chế Next.js Rewrites và cập nhật Backend BFF để hỗ trợ xác thực JWT qua HttpOnly Cookie `access_token` (`OnMessageReceived`).
+* Thiết lập giao diện người dùng đạt chuẩn `ui-ux-pro-max`: 100% SVG icons, không emoji, xử lý cập nhật nhanh qua `HTTP PATCH`, sinh lịch học tuần hoàn và hiển thị Alert lỗi nghiệp vụ rõ nét.
+* Triệt tiêu cảnh báo Instant Navigation của Next.js 16 bằng cách bọc `<Suspense>` quanh các Server Component con đọc `await params`.
+* Dọn dẹp triệt để các tệp mẫu tạm thời (`exampleService.ts`, `useExampleCourses.ts`, `ExampleCourseList.tsx`).
+
+### Các công việc đã thực hiện
+1. **Cập nhật Backend BFF nhận JWT qua Cookie (`BFF/LmsSaaS.Infrastructure/DependencyInjection.cs`)**:
+   - Bổ sung `JwtBearerEvents.OnMessageReceived` đọc token từ `context.Request.Cookies["access_token"]` khi không có header Authorization, cho phép browser gọi API mượt mà qua Next.js Rewrites.
+2. **Cấu hình Next.js Rewrites (`client/next.config.ts`)**:
+   - Thêm phương thức `async rewrites()` chuyển hướng tự động `/api/courses/:path*` và `/api/classes/:path*` sang Backend BFF (`DOTNET_API_URL`).
+3. **Định nghĩa Types (`client/src/types/`)**:
+   - `course.ts`: `CourseResponse`, `CreateCourseRequest`, `PatchCourseRequest` (sử dụng `Partial<CreateCourseRequest> & { isActive?: boolean }` để chỉ gửi trường thay đổi).
+   - `class.ts`: `ClassResponse`, `ClassSessionResponse`, `ClassScheduleConfigRequest`, `CreateClassRequest`, `PatchClassRequest`.
+   - Xuất khẩu toàn cục qua `src/types/index.ts`.
+4. **Bổ sung Hằng số Route (`client/src/constants/routes.ts`)**:
+   - Bổ sung `API.COURSES` (`ROOT: "/api/courses"`, `DETAIL: (id) => ...`) và `API.CLASSES` (`ROOT: "/api/classes"`, `DETAIL: (id) => ...`).
+5. **Xây dựng Thin Service Layer (`client/src/services/`)**:
+   - `courseService.ts`: Cung cấp `getCourses`, `getCourseById`, `createCourse`, `patchCourse`, `deleteCourse`.
+   - `classService.ts`: Cung cấp `getClasses`, `getClassById`, `createClass`, `patchClass`.
+   - Toàn bộ service đều không dùng `try-catch`, ủy quyền bắt lỗi và xoay vòng refresh token cho Axios Interceptors.
+6. **Xây dựng Custom SWR Hooks (`client/src/hooks/`)**:
+   - `useCourses.ts`: `useCourses` (cache theo key `[ROUTES.API.COURSES.ROOT, tenantSlug]`), `useCourseDetail`.
+   - `useClasses.ts`: `useClasses` (cache theo key `[ROUTES.API.CLASSES.ROOT, tenantSlug]`), `useClassDetail` (lấy danh sách `sessions`).
+   - Cập nhật barrel export `src/hooks/index.ts`.
+7. **Xây dựng UI Components (`client/src/components/`)**:
+   - `CoursesView.tsx`:
+     + Tìm kiếm theo từ khóa và lọc trạng thái Đang mở / Tạm ngưng.
+     + Nút bật/tắt nhanh trạng thái: gọi `courseService.patchCourse(course.id, { isActive: !course.isActive })` -> `mutate()`, chỉ gửi đúng 1 thuộc tính `{ isActive }`.
+     + Modal Tạo mới khóa học với validation.
+     + Modal Chỉnh sửa nhanh qua HTTP PATCH.
+     + Nút Xóa khóa học với hộp thông báo bắt lỗi nếu khóa học đã có lớp liên kết.
+   - `ClassesView.tsx`:
+     + Hiển thị Grid cards lớp học, badge khóa học, phòng học, sĩ số và trạng thái.
+     + Dropdown thay đổi trạng thái nhanh (`Upcoming`, `Ongoing`, `Completed`, `Cancelled`) qua PATCH `{ status }`.
+     + Drawer / Modal Xem chi tiết toàn bộ các buổi học (`ClassSessions`) với timeline giờ UTC rõ ràng.
+     + Modal "+ Mở lớp học mới": Chọn khóa học từ `useCourses()`, nhập giảng viên, sĩ số, ngày bắt đầu - kết thúc, Multi-select pills chọn các thứ trong tuần (Thứ 2 -> Chủ Nhật) và giờ học.
+     + Alert Banner màu đỏ nổi bật hiển thị chính xác thông báo lỗi nghiệp vụ từ Backend khi vượt hạn ngạch lớp học của gói cước hoặc khi giảng viên bị trùng lịch dạy.
+8. **Cập nhật Pages & Instant Navigation (`client/src/app/[tenantSlug]/`)**:
+   - `courses/page.tsx`: Tích hợp `CachedCourseCatalog` và `CoursesView` trong `<Suspense>`.
+   - `classes/page.tsx`: Tích hợp `ClassesView` trong `<Suspense>`, triệt tiêu cảnh báo URL data ngoài Suspense.
+9. **Dọn dẹp File Mẫu Tạm thời**:
+   - Xóa bỏ `exampleService.ts`, `useExampleCourses.ts`, và thư mục `src/components/example/`.
+10. **Kiểm tra và Xác minh Toàn diện**:
+    - `npx tsc --noEmit`: 0 lỗi TypeScript.
+    - `pnpm run build`: Turbopack biên dịch thành công 14/14 static & dynamic routes trong 5.0s.
+    - `dotnet test BFF/LmsSaaS.slnx`: 39/39 unit test cases passed 100%.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Tính đồng bộ tuyệt đối giữa Frontend Types và Backend Entities**:
+  - Việc định nghĩa `PatchCourseRequest` và `PatchClassRequest` bằng các Utility Types `Partial<T>` và `Pick<T>` ở Frontend khớp hoàn toàn với cơ chế Reflection Dictionary `ToPatchDictionary()` ở Backend .NET BFF. Nhờ đó, thao tác bật/tắt một nút gạt trên giao diện chỉ gửi một payload JSON siêu nhẹ `{ "isActive": false }`, Backend chỉ cập nhật đúng 1 cột `is_active` trên Supabase mà không làm xáo trộn dữ liệu các cột khác.
+* **Xử lý Lỗi Nghiệp vụ Tập trung (Domain-Specific Alerts)**:
+  - Các lỗi nghiệp vụ phức tạp như `MaxClassesLimit` hay `Trùng lịch giảng dạy` được chuẩn hóa thành `AppApiError` và hiển thị trực tiếp vào Alert Banner của Modal, giúp người dùng nắm bắt ngay lập tức nguyên nhân va chạm (tên lớp bị trùng, ngày và khung giờ) mà không phải kiểm tra bảng điều khiển DevTools.
+
+---
+
+## [2026-10-25] Chuyển đổi và Chuẩn hóa Hệ thống Giao diện sang Material UI (MUI) Enterprise SaaS & Hoàn thiện Phân hệ Courses & Classes
+
+### Mục tiêu trong ngày
+* Nâng cấp và chuẩn hóa toàn diện giao diện Frontend của dự án sang **Material UI (MUI)** nhằm đạt tính đồng nhất, tin cậy tuyệt đối của một nền tảng Enterprise SaaS.
+* Bổ sung endpoint `GET /api/members/teachers` tại `.NET 10 BFF` phục vụ `<Select>` chọn giảng viên khi mở lớp học.
+* Khóa cứng hệ thống Design System và Theme tập trung (`client/src/theme/theme.ts`) với bảng màu chuyên nghiệp (Indigo 600, Slate 900, bo góc 10px, loại bỏ shadow Material cũ).
+* Tích hợp `MuiProvider` với `@mui/material-nextjs/v15-appRouter` (`enableCssLayer: true`) vào root layout Next.js 16.
+* Chuyển đổi App Shell Layout (`WorkspaceSidebar`, `WorkspaceHeader`, `WorkspaceShell`) và toàn bộ phân hệ `CoursesView` & `ClassesView` sang 100% MUI components.
+
+### Các công việc đã thực hiện
+1. **Backend .NET 10 BFF**:
+   - `BFF/LmsSaaS.Core/DTOs/Members/TenantTeacherResponse.cs`: Tạo `record TenantTeacherResponse(Guid UserId, string FullName, string Email, string Role)`.
+   - `BFF/LmsSaaS.Api/Controllers/MembersController.cs`: Viết `GET /api/members/teachers`, truy vấn `TenantMembers.Include(tm => tm.User)` có `IsActive == true` và vai trò `Teacher` hoặc `CenterAdmin`.
+   - Cập nhật `next.config.ts`: Thêm rewrite cho `/api/members/:path*` nối tới Backend BFF.
+2. **Cài đặt & Tích hợp MUI v9**:
+   - Cài đặt `@mui/material`, `@emotion/react`, `@emotion/styled`, `@mui/material-nextjs`, `@mui/icons-material`.
+   - Tạo `client/src/theme/theme.ts`: Cấu hình palette Indigo 600 (`#4f46e5`), Slate 900 (`#0f172a`), shape borderRadius 10, typography gắn kết với `--font-plus-jakarta-sans`, overrides cho Button (disableElevation), Paper/Card (viền mỏng 1px #e2e8f0, không shadow đậm), TableCell, Dialog, TextField (size small mặc định).
+   - Tạo `client/src/components/providers/MuiProvider.tsx` với `AppRouterCacheProvider options={{ enableCssLayer: true }}` và bọc trong `client/src/app/layout.tsx`.
+3. **Đồng bộ App Shell Layout sang MUI**:
+   - `WorkspaceHeader.tsx`: Sử dụng `AppBar`, `Toolbar`, `Chip`, `IconButton`, `Tooltip`, `Button`, icons từ `@mui/icons-material`.
+   - `WorkspaceSidebar.tsx`: Sử dụng `Drawer` (mobile temporary), Box (desktop permanent), `List`, `ListItemButton`, `ListItemIcon`, `ListItemText`, icons MUI.
+   - `WorkspaceShell.tsx`: Sử dụng `Box` MUI cho layout tổng thể.
+4. **Types, Routes, Services & Hooks**:
+   - `ROUTES.API.MEMBERS.TEACHERS` tại `routes.ts`.
+   - `TenantTeacherResponse` tại `types/class.ts`.
+   - `memberService.ts`: Cung cấp hàm `getTeachers()`.
+   - `useClasses.ts`: Bổ sung hook `useTeachers(tenantSlug)` với SWR key `[ROUTES.API.MEMBERS.TEACHERS, tenantSlug]`.
+5. **Chuyển đổi UI Khóa học (`CoursesView.tsx`) sang MUI**:
+   - Bảng danh sách khóa học sử dụng `TableContainer`, `Table`, `TableHead`, `TableRow`, `TableCell`, `TableBody`.
+   - Thanh tìm kiếm nhanh với `TextField` và `InputAdornment`.
+   - Nút gạt `<Switch>` bật/tắt `isActive` gọi trực tiếp `patchCourse(id, { isActive })` rồi `mutate()`.
+   - `<Dialog>` Tạo mới và Chỉnh sửa khóa học (gửi đúng diff qua `PatchCourseRequest`).
+   - `<Dialog>` xác nhận xóa: hiển thị `<Alert severity="error">` chi tiết từ lỗi BFF nếu có lớp đang mở.
+6. **Chuyển đổi UI Lớp học (`ClassesView.tsx`) sang MUI**:
+   - Bảng danh sách lớp học hiển thị Tên lớp, Khóa học (Chip), Giảng viên, Phòng học, Thời gian, Sĩ số, Tổng số buổi (Chip), Trạng thái lớp.
+   - `<Dialog maxWidth="md" fullWidth>` Mở lớp học mới:
+     + `<FormControl>` + `<Select>` chọn Khóa học và Giảng viên.
+     + `<TextField>` nhập Tên lớp, Phòng học, Sĩ số, Ngày bắt đầu, Ngày kết thúc, Giờ học.
+     + `<ToggleButtonGroup>` chọn thứ trong tuần.
+     + `<Alert severity="error" variant="filled">` hiển thị nguyên văn thông báo nghiệp vụ khi vượt `MaxClassesLimit` hoặc trùng lịch giảng dạy.
+   - `<Drawer anchor="right">` Xem lịch trình buổi học (`Sessions`) với mã buổi học, chủ đề, ngày tháng và khung giờ UTC.
+7. **Kiểm tra và Xác minh Toàn diện**:
+   - `dotnet test BFF/LmsSaaS.slnx`: 39/39 unit test cases passed 100%.
+   - `npx tsc --noEmit`: 0 lỗi TypeScript.
+   - `pnpm run build`: Turbopack biên dịch thành công 14/14 static & dynamic routes trong 5.8s.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **AppRouterCacheProvider với enableCssLayer**:
+  - Việc bật `enableCssLayer: true` trong `@mui/material-nextjs/v15-appRouter` đảm bảo các quy tắc CSS của MUI được đặt trong `@layer mui`, giúp tương thích hoàn hảo và không bị xung đột độ ưu tiên với Tailwind CSS v4 và các CSS modules trong Next.js 16 App Router.
+* **MUI v9 SlotProps Compatibility**:
+  - Sử dụng cấu trúc `slotProps={{ input: { startAdornment, endAdornment } }}` trên `TextField` và `slotProps={{ paper: { sx } }}` trên `Drawer` thay thế cho cú pháp cũ, đảm bảo tương thích 100% với hệ thống Type definition mới nhất của MUI v9.
+
+
+

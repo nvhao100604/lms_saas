@@ -1,6 +1,5 @@
 import { Suspense } from "react";
-import { CachedCourseCatalog } from "@/components/courses";
-import { ExampleCourseList } from "@/components/example/ExampleCourseList";
+import { CachedCourseCatalog, CoursesView } from "@/components/courses";
 import { SectionLoadingFallback } from "@/components/layout";
 
 export interface CoursesPageProps {
@@ -17,17 +16,17 @@ async function CoursesContent({ params }: CoursesPageProps) {
       {/* 1. Next.js 16 Cache Component (use cache + cacheLife + cacheTag) */}
       <CachedCourseCatalog tenantSlug={tenantSlug} />
 
-      {/* 2. Client-side Revalidated SWR Course Management View */}
+      {/* 2. Client-side Real-time SWR Course Management View */}
       <section className="space-y-4">
         <div className="border-b border-neutral-200 pb-3 dark:border-neutral-800">
           <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-            Live Course Management (SWR)
+            Quản lý Khóa học Trực tiếp (SWR)
           </h3>
           <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            Client-side data fetching with search, pagination, and real-time mutations.
+            Xem danh sách, tìm kiếm, tạo mới và chỉnh sửa nhanh thông tin học phí & trạng thái tuyển sinh qua HTTP PATCH.
           </p>
         </div>
-        <ExampleCourseList />
+        <CoursesView tenantSlug={tenantSlug} />
       </section>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { Box } from "@mui/material";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { WorkspaceHeader } from "./WorkspaceHeader";
 
@@ -25,7 +26,16 @@ export function WorkspaceShell({ tenantSlug, children }: WorkspaceShellProps) {
   }, [isMobileOpen]);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased">
+    <Box
+      sx={{
+        display: "flex",
+        height: "100vh",
+        width: "100%",
+        overflow: "hidden",
+        bgcolor: "background.default",
+        color: "text.primary",
+      }}
+    >
       {/* Sidebar navigation */}
       <WorkspaceSidebar
         tenantSlug={tenantSlug}
@@ -36,7 +46,15 @@ export function WorkspaceShell({ tenantSlug, children }: WorkspaceShellProps) {
       />
 
       {/* Main Workspace Frame */}
-      <div className="flex flex-1 flex-col overflow-hidden min-w-0">
+      <Box
+        sx={{
+          display: "flex",
+          flex: 1,
+          flexDirection: "column",
+          overflow: "hidden",
+          minWidth: 0,
+        }}
+      >
         {/* Sticky Header */}
         <WorkspaceHeader
           tenantSlug={tenantSlug}
@@ -44,11 +62,20 @@ export function WorkspaceShell({ tenantSlug, children }: WorkspaceShellProps) {
         />
 
         {/* Scrollable Work Area */}
-        <main className="flex-1 overflow-y-auto focus-visible:outline-none">
+        <Box
+          component="main"
+          sx={{
+            flex: 1,
+            overflowY: "auto",
+            "&:focus-visible": {
+              outline: "none",
+            },
+          }}
+        >
           {children}
-        </main>
-      </div>
-    </div>
+        </Box>
+      </Box>
+    </Box>
   );
 }
 

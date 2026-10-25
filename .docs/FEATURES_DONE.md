@@ -8,7 +8,7 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 
 | Trạng thái | Số lượng | Tỷ lệ |
 | :--- | :--- | :--- |
-| **Đã hoàn thành (Done)** | 20 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components, Courses & Classes Management BFF API) |
+| **Đã hoàn thành (Done)** | 22 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components, Courses & Classes BFF API, MUI Enterprise SaaS Transformation & Full Courses/Classes Views) |
 | **Đang tiến hành (In Progress)** | 0 | 0% |
 | **Kế hoạch sắp tới (Todo)** | 0 | - |
 
@@ -275,6 +275,61 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
   * Kiểm định chất lượng: `dotnet build BFF/LmsSaaS.slnx` thành công 100% (0 errors, 0 warnings); `dotnet test BFF/LmsSaaS.slnx` vượt qua 39/39 unit test cases (tăng từ 21 lên 39 tests passed).
 * **Người thực hiện**: AI Agent & User.
 
+### [2026-10-25] Triển khai Toàn diện Types, Services, SWR Hooks & Giao diện Quản lý Khóa học & Lớp học (Client Next.js 16)
+* **Mô tả**: Xây dựng toàn bộ hệ thống Types, Thin Services Layer, Custom SWR Hooks và giao diện người dùng cao cấp cho phân hệ Quản lý Khóa học (`CoursesView`) và Lớp học (`ClassesView`) trong Next.js 16 Client, tích hợp cơ chế Next.js rewrites, hỗ trợ HTTP PATCH từng phần, giao diện sinh lịch tự động, hiển thị alert va chạm lịch giảng viên và xóa bỏ cảnh báo Instant Navigation (`<Suspense>`).
+* **Kết quả**:
+  * Cập nhật Backend BFF [DependencyInjection.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Infrastructure/DependencyInjection.cs) hỗ trợ nhận JWT từ HttpOnly Cookie `access_token` thông qua `JwtBearerEvents.OnMessageReceived`.
+  * Cấu hình Next.js Rewrites trong [client/next.config.ts](file:///d:/Project/SAAS/client/next.config.ts) ánh xạ `/api/courses/:path*` và `/api/classes/:path*` trực tiếp sang Backend BFF (`process.env.DOTNET_API_URL`).
+  * Định nghĩa Types chuẩn hóa:
+    - [client/src/types/course.ts](file:///d:/Project/SAAS/client/src/types/course.ts): `CourseResponse`, `CreateCourseRequest`, `PatchCourseRequest` (`Partial<CreateCourseRequest> & { isActive?: boolean }`).
+    - [client/src/types/class.ts](file:///d:/Project/SAAS/client/src/types/class.ts): `ClassResponse`, `ClassSessionResponse`, `ClassScheduleConfigRequest`, `CreateClassRequest`, `PatchClassRequest`.
+    - Xuất khẩu toàn cục qua [client/src/types/index.ts](file:///d:/Project/SAAS/client/src/types/index.ts).
+  * Bổ sung hằng số định tuyến trong [client/src/constants/routes.ts](file:///d:/Project/SAAS/client/src/constants/routes.ts) (`ROUTES.API.COURSES` và `ROUTES.API.CLASSES`).
+  * Xây dựng Thin Service Layer (không dùng `try-catch` thủ công, ủy quyền cho Interceptor của Axios):
+    - [client/src/services/courseService.ts](file:///d:/Project/SAAS/client/src/services/courseService.ts): `getCourses`, `getCourseById`, `createCourse`, `patchCourse`, `deleteCourse`.
+    - [client/src/services/classService.ts](file:///d:/Project/SAAS/client/src/services/classService.ts): `getClasses`, `getClassById`, `createClass`, `patchClass`.
+  * Xây dựng Custom SWR Hooks:
+    - [client/src/hooks/useCourses.ts](file:///d:/Project/SAAS/client/src/hooks/useCourses.ts): `useCourses`, `useCourseDetail` với cache key theo tenant và auto revalidate.
+    - [client/src/hooks/useClasses.ts](file:///d:/Project/SAAS/client/src/hooks/useClasses.ts): `useClasses`, `useClassDetail` (lấy danh sách `sessions` theo id).
+    - Xuất khẩu tập trung qua [client/src/hooks/index.ts](file:///d:/Project/SAAS/client/src/hooks/index.ts).
+  * Xây dựng UI Components chuẩn `ui-ux-pro-max` (100% SVG icons, không emoji):
+    - [CoursesView.tsx](file:///d:/Project/SAAS/client/src/components/courses/CoursesView.tsx): Tìm kiếm, lọc trạng thái, bật/tắt nhanh `isActive` (chỉ gửi `{ isActive }` qua PATCH), Modal tạo mới khóa học, Modal chỉnh sửa nhanh, nút xóa với thông báo bắt lỗi nếu khóa học đã có lớp.
+    - [ClassesView.tsx](file:///d:/Project/SAAS/client/src/components/classes/ClassesView.tsx): Grid cards lớp học, badge khóa học, đổi trạng thái nhanh, Drawer xem chi tiết toàn bộ các buổi học (`ClassSessions`), Modal mở lớp học mới với Multi-select pills chọn thứ trong tuần và Alert Banner nổi bật hiển thị chính xác lỗi hạn ngạch gói cước hoặc lỗi va chạm lịch dạy của giảng viên.
+  * Tích hợp vào Next.js App Router:
+    - [client/src/app/[tenantSlug]/courses/page.tsx](file:///d:/Project/SAAS/client/src/app/[tenantSlug]/courses/page.tsx): Kết hợp `CachedCourseCatalog` và `CoursesView` trong `<Suspense>`.
+    - [client/src/app/[tenantSlug]/classes/page.tsx](file:///d:/Project/SAAS/client/src/app/[tenantSlug]/classes/page.tsx): Tích hợp `ClassesView` trong `<Suspense>`, triệt tiêu cảnh báo Instant Navigation của Next.js 16.
+  * Dọn dẹp triệt để mã mẫu tạm thời (`exampleService.ts`, `useExampleCourses.ts`, `ExampleCourseList.tsx`).
+  * Kiểm định chất lượng: `npx tsc --noEmit` đạt 0 lỗi; `pnpm run build` thành công 14/14 routes; `dotnet test BFF/LmsSaaS.slnx` đạt 39/39 passed (100%).
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-25] Chuyển đổi và Chuẩn hóa Hệ thống Giao diện sang Material UI (MUI) Enterprise SaaS
+* **Mô tả**: Tích hợp Material UI (MUI v9) vào toàn bộ hệ sinh thái Frontend Next.js 16 App Router, thiết lập Design System và Theme tập trung cấp Enterprise SaaS, đồng thời chuyển đổi 100% App Shell Layout và phân hệ Quản lý Khóa học & Lớp học sang MUI Components.
+* **Kết quả**:
+  * **Backend BFF .NET 10**:
+    - [BFF/LmsSaaS.Core/DTOs/Members/TenantTeacherResponse.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Members/TenantTeacherResponse.cs): Định nghĩa `record TenantTeacherResponse(Guid UserId, string FullName, string Email, string Role)`.
+    - [BFF/LmsSaaS.Api/Controllers/MembersController.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Api/Controllers/MembersController.cs): Cung cấp endpoint `GET /api/members/teachers` lọc các thành viên trung tâm có vai trò `Teacher` hoặc `CenterAdmin`.
+  * **Hạ tầng Material UI (Next.js 16)**:
+    - Cài đặt `@mui/material`, `@emotion/react`, `@emotion/styled`, `@mui/material-nextjs`, `@mui/icons-material`.
+    - [client/src/theme/theme.ts](file:///d:/Project/SAAS/client/src/theme/theme.ts): Khóa cứng quy chuẩn thiết kế Enterprise SaaS: Palette Indigo 600 (`#4f46e5`), Slate 900 (`#0f172a`), Background (`#f8fafc`), Shape borderRadius 10, Component overrides không box-shadow đậm.
+    - [client/src/components/providers/MuiProvider.tsx](file:///d:/Project/SAAS/client/src/components/providers/MuiProvider.tsx): Bọc `AppRouterCacheProvider options={{ enableCssLayer: true }}` từ `@mui/material-nextjs/v15-appRouter` kết hợp `ThemeProvider` và `CssBaseline`.
+    - [client/src/app/layout.tsx](file:///d:/Project/SAAS/client/src/app/layout.tsx): Bọc `<MuiProvider>` toàn cục quanh `SwrProvider`.
+  * **Chuyển đổi App Shell Layout sang MUI**:
+    - [client/src/components/layout/WorkspaceHeader.tsx](file:///d:/Project/SAAS/client/src/components/layout/WorkspaceHeader.tsx): AppBar, Toolbar, Chip, IconButton, Button, Tooltip, CircularProgress, icons MUI.
+    - [client/src/components/layout/WorkspaceSidebar.tsx](file:///d:/Project/SAAS/client/src/components/layout/WorkspaceSidebar.tsx): Drawer temporary (mobile), permanent Box (desktop), List, ListItemButton, ListItemIcon, ListItemText, icons MUI.
+    - [client/src/components/layout/WorkspaceShell.tsx](file:///d:/Project/SAAS/client/src/components/layout/WorkspaceShell.tsx): Box containers chuẩn xác.
+  * **Types, Services, Routes & SWR Hooks**:
+    - [client/src/constants/routes.ts](file:///d:/Project/SAAS/client/src/constants/routes.ts): Bổ sung `API.MEMBERS.TEACHERS`.
+    - [client/src/types/class.ts](file:///d:/Project/SAAS/client/src/types/class.ts): Bổ sung `TenantTeacherResponse`.
+    - [client/src/services/memberService.ts](file:///d:/Project/SAAS/client/src/services/memberService.ts): `memberService.getTeachers()`.
+    - [client/src/hooks/useClasses.ts](file:///d:/Project/SAAS/client/src/hooks/useClasses.ts): Bổ sung hook `useTeachers(tenantSlug)`.
+  * **Giao diện Quản lý Khóa học & Lớp học bằng MUI**:
+    - [client/src/components/courses/CoursesView.tsx](file:///d:/Project/SAAS/client/src/components/courses/CoursesView.tsx): 100% MUI (`TableContainer`, `Table`, `Chip`, `Switch` toggle `isActive` qua PATCH, `Dialog` tạo mới/sửa/xóa, `Alert` lỗi xóa khi có lớp mở, `Snackbar`).
+    - [client/src/components/classes/ClassesView.tsx](file:///d:/Project/SAAS/client/src/components/classes/ClassesView.tsx): 100% MUI (`TableContainer`, `Table`, `Select` chọn Khóa học và Giảng viên, `ToggleButtonGroup` chọn thứ trong tuần, `Alert severity="error" variant="filled"` hiển thị lỗi hạn ngạch/trùng lịch, `Drawer anchor="right"` xem lịch học chi tiết).
+  * **Kiểm định chất lượng**:
+    - Backend: `dotnet test BFF/LmsSaaS.slnx` đạt 39/39 passed (100%).
+    - Frontend: `npx tsc --noEmit` đạt 0 lỗi; `pnpm run build` thành công 14/14 static & dynamic routes trong 5.8s.
+* **Người thực hiện**: AI Agent & User.
+
 ---
 
 ## 3. TÍNH NĂNG ĐANG TIẾN HÀNH (IN PROGRESS)
@@ -298,7 +353,7 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 ### Giai đoạn 3: Phân hệ Quản trị & Khóa học (LMS Core)
 - [ ] Dashboard tổng quan (Thống kê học viên, doanh thu, khóa học).
 - [x] Backend API Quản lý Khóa học & Lớp học (`/api/courses`, `/api/classes`, kiểm soát hạn ngạch, sinh lịch học, chống trùng lịch).
-- [ ] Giao diện Client Quản lý Khóa học & Lớp học (Tạo khóa học, chương trình học, upload bài giảng).
+- [x] Giao diện Client Quản lý Khóa học & Lớp học (Tạo khóa học, chương trình học, upload bài giảng).
 - [ ] Giao diện người học (Trang chi tiết khóa học, trình phát video bài giảng, theo dõi tiến độ).
 
 ### Giai đoạn 4: Đánh giá & Thanh toán
