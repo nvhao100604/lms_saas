@@ -376,4 +376,154 @@ public class ClassesController(
             Data = response
         });
     }
+
+    [HttpGet("{id:guid}/enrollments")]
+    public async Task<IActionResult> GetEnrollments(Guid id)
+    {
+        var classExists = await dbContext.Classes.AnyAsync(c => c.Id == id);
+        if (!classExists)
+        {
+            return NotFound(new ApiResponse<IReadOnlyList<ClassEnrollmentResponse>>
+            {
+                Success = false,
+                Message = "Không tìm thấy lớp học."
+            });
+        }
+
+        var enrollments = await dbContext.Enrollments
+            .AsNoTracking()
+            .Where(e => e.ClassId == id)
+            .Include(e => e.Student)
+            .OrderBy(e => e.Student.FullName)
+            .Select(e => new ClassEnrollmentResponse(
+                e.Id,
+                e.StudentId,
+                e.Student.FullName,
+                e.Student.Email,
+                e.EnrolledAt
+            ))
+            .ToListAsync();
+
+        return Ok(new ApiResponse<IReadOnlyList<ClassEnrollmentResponse>>
+        {
+            Success = true,
+            Message = "Lấy danh sách học viên ghi danh thành công.",
+            Data = enrollments
+        });
+    }
+
+    [HttpPost("{id:guid}/enrollments")]
+    [Authorize(Roles = "CenterAdmin")]
+    public async Task<IActionResult> EnrollStudent(Guid id, [FromBody] CreateEnrollmentRequest request)
+    {
+        var classEntity = await dbContext.Classes.FirstOrDefaultAsync(c => c.Id == id);
+        if (classEntity == null)
+        {
+            return NotFound(new ApiResponse<ClassEnrollmentResponse>
+            {
+                Success = false,
+                Message = "Không tìm thấy lớp học."
+            });
+        }
+
+        var currentEnrollmentCount = await dbContext.Enrollments.CountAsync(e => e.ClassId == id);
+        if (currentEnrollmentCount >= classEntity.MaxCapacity)
+        {
+            return BadRequest(new ApiResponse<ClassEnrollmentResponse>
+            {
+                Success = false,
+                Message = $"Lớp học đã đạt sĩ số tối đa ({classEntity.MaxCapacity} học viên). Không thể ghi danh thêm."
+            });
+        }
+
+        var isStudentMember = await dbContext.TenantMembers
+            .AnyAsync(tm => tm.UserId == request.StudentId && tm.Role == RoleInTenant.Student);
+
+        if (!isStudentMember)
+        {
+            return BadRequest(new ApiResponse<ClassEnrollmentResponse>
+            {
+                Success = false,
+                Message = "Học viên không tồn tại trong trung tâm đào tạo."
+            });
+        }
+
+        var isAlreadyEnrolled = await dbContext.Enrollments
+            .AnyAsync(e => e.ClassId == id && e.StudentId == request.StudentId);
+
+        if (isAlreadyEnrolled)
+        {
+            return BadRequest(new ApiResponse<ClassEnrollmentResponse>
+            {
+                Success = false,
+                Message = "Học viên này đã được ghi danh vào lớp học trước đó."
+            });
+        }
+
+        var student = await dbContext.Users.FindAsync(request.StudentId);
+        if (student == null)
+        {
+            return NotFound(new ApiResponse<ClassEnrollmentResponse>
+            {
+                Success = false,
+                Message = "Không tìm thấy thông tin tài khoản học viên."
+            });
+        }
+
+        var enrollment = new Enrollment
+        {
+            Id = Guid.NewGuid(),
+            TenantId = classEntity.TenantId,
+            ClassId = id,
+            StudentId = request.StudentId,
+            TuitionStatus = TuitionStatus.Unpaid,
+            EnrolledAt = DateTimeOffset.UtcNow
+        };
+
+        dbContext.Enrollments.Add(enrollment);
+        await dbContext.SaveChangesAsync();
+
+        var response = new ClassEnrollmentResponse(
+            enrollment.Id,
+            student.Id,
+            student.FullName,
+            student.Email,
+            enrollment.EnrolledAt
+        );
+
+        return Created($"/api/classes/{id}/enrollments/{enrollment.Id}", new ApiResponse<ClassEnrollmentResponse>
+        {
+            Success = true,
+            Message = "Ghi danh học viên vào lớp học thành công.",
+            Data = response
+        });
+    }
+
+    [HttpDelete("{id:guid}/enrollments/{studentId:guid}")]
+    [Authorize(Roles = "CenterAdmin")]
+    public async Task<IActionResult> RemoveStudent(Guid id, Guid studentId)
+    {
+        var enrollment = await dbContext.Enrollments
+            .FirstOrDefaultAsync(e => e.ClassId == id && e.StudentId == studentId);
+
+        if (enrollment == null)
+        {
+            return NotFound(new ApiResponse<bool>
+            {
+                Success = false,
+                Message = "Không tìm thấy bản ghi ghi danh của học viên trong lớp này."
+            });
+        }
+
+        dbContext.Enrollments.Remove(enrollment);
+        await dbContext.SaveChangesAsync();
+
+        return Ok(new ApiResponse<bool>
+        {
+            Success = true,
+            Message = "Đã hủy ghi danh học viên khỏi lớp học thành công.",
+            Data = true
+        });
+    }
 }
+

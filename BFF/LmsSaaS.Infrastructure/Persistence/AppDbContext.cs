@@ -203,6 +203,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Attendance>(entity =>
         {
             entity.HasKey(a => a.Id);
+            entity.HasIndex(a => new { a.ClassSessionId, a.StudentId }).IsUnique();
             entity.Property(a => a.TeacherNote).HasMaxLength(500);
 
             entity.Property(a => a.Status)

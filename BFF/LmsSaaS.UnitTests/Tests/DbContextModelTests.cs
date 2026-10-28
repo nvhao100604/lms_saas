@@ -233,4 +233,22 @@ public class DbContextModelTests
         Assert.NotNull(rtEntity);
         Assert.NotEmpty(rtEntity.GetDeclaredQueryFilters());
     }
+
+    [Fact]
+    public void AppDbContext_AttendanceModel_ShouldHaveUniqueIndexOnClassSessionIdAndStudentId()
+    {
+        using var context = CreateContext();
+        var entityType = context.Model.FindEntityType(typeof(Attendance));
+        Assert.NotNull(entityType);
+
+        var indexes = entityType.GetIndexes();
+        var uniqueIndex = indexes.FirstOrDefault(i =>
+            i.IsUnique &&
+            i.Properties.Count == 2 &&
+            i.Properties.Any(p => p.Name == nameof(Attendance.ClassSessionId)) &&
+            i.Properties.Any(p => p.Name == nameof(Attendance.StudentId)));
+
+        Assert.NotNull(uniqueIndex);
+    }
 }
+

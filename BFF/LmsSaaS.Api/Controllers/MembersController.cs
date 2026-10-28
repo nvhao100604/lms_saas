@@ -38,4 +38,28 @@ public class MembersController(AppDbContext dbContext) : ControllerBase
             Data = teachers
         });
     }
+
+    [HttpGet("students")]
+    public async Task<IActionResult> GetStudents()
+    {
+        var students = await dbContext.TenantMembers
+            .AsNoTracking()
+            .Include(tm => tm.User)
+            .Where(tm => tm.Role == RoleInTenant.Student)
+            .OrderBy(tm => tm.User.FullName)
+            .Select(tm => new TenantStudentResponse(
+                tm.UserId,
+                tm.User.FullName,
+                tm.User.Email
+            ))
+            .ToListAsync();
+
+        return Ok(new ApiResponse<IReadOnlyList<TenantStudentResponse>>
+        {
+            Success = true,
+            Message = "Lấy danh sách học viên thành công.",
+            Data = students
+        });
+    }
 }
+
