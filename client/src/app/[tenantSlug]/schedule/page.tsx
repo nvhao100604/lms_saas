@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import { WorkspaceSectionView, SectionLoadingFallback } from "@/components/layout";
+import { ScheduleView } from "@/components/schedule/ScheduleView";
+import { SectionLoadingFallback } from "@/components/layout";
 
 export interface SchedulePageProps {
   params: Promise<{
@@ -9,7 +10,7 @@ export interface SchedulePageProps {
 
 async function ScheduleContent({ params }: SchedulePageProps) {
   const { tenantSlug } = await params;
-  return <WorkspaceSectionView sectionKey="schedule" tenantSlug={tenantSlug} />;
+  return <ScheduleView tenantSlug={tenantSlug} />;
 }
 
 export default function SchedulePage({ params }: SchedulePageProps) {

@@ -40,9 +40,12 @@ import ClearRoundedIcon from "@mui/icons-material/ClearRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import RoomRoundedIcon from "@mui/icons-material/RoomRounded";
 import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
+import GroupOutlinedIcon from "@mui/icons-material/GroupOutlined";
 import { useClasses, useClassDetail, useTeachers } from "@/hooks/useClasses";
+import { useCurrentRole } from "@/hooks/useCurrentRole";
 import { useCourses } from "@/hooks/useCourses";
 import { classService } from "@/services/classService";
+import { EnrollmentDrawer } from "./EnrollmentDrawer";
 import { formatDate } from "@/lib/utils";
 import type {
   ClassResponse,
@@ -67,6 +70,7 @@ const DAYS_OF_WEEK_OPTIONS = [
 ];
 
 export function ClassesView({ tenantSlug }: ClassesViewProps) {
+  const { isCenterAdmin } = useCurrentRole();
   const { classes, isLoading, isError, error, isValidating, mutate } =
     useClasses(tenantSlug);
   const { courses } = useCourses(tenantSlug);
@@ -110,6 +114,9 @@ export function ClassesView({ tenantSlug }: ClassesViewProps) {
     sessions,
     isLoading: isSessionsLoading,
   } = useClassDetail(selectedClassId, tenantSlug);
+
+  // State Drawer Quản lý học viên & Ghi danh (Enrollments)
+  const [enrollmentClass, setEnrollmentClass] = useState<ClassResponse | null>(null);
 
   // State cập nhật trạng thái nhanh (PATCH status)
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
@@ -266,6 +273,23 @@ export function ClassesView({ tenantSlug }: ClassesViewProps) {
     }
   };
 
+  const getStatusColor = (
+    status: ClassStatus
+  ): "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning" => {
+    switch (status) {
+      case "Upcoming":
+        return "info";
+      case "Ongoing":
+        return "primary";
+      case "Completed":
+        return "success";
+      case "Cancelled":
+        return "default";
+      default:
+        return "default";
+    }
+  };
+
   return (
     <Box sx={{ p: { xs: 2, sm: 3 }, display: "flex", flexDirection: "column", gap: 3 }}>
       {/* Header Điều khiển & Bộ lọc */}
@@ -353,18 +377,20 @@ export function ClassesView({ tenantSlug }: ClassesViewProps) {
             {isValidating ? "Đang đồng bộ..." : "Làm mới"}
           </Button>
 
-          <Button
-            variant="contained"
-            size="small"
-            color="primary"
-            onClick={() => {
-              setIsCreateOpen(true);
-              setCreateError(null);
-            }}
-            startIcon={<AddRoundedIcon fontSize="small" />}
-          >
-            Mở lớp học mới
-          </Button>
+          {isCenterAdmin && (
+            <Button
+              variant="contained"
+              size="small"
+              color="primary"
+              onClick={() => {
+                setIsCreateOpen(true);
+                setCreateError(null);
+              }}
+              startIcon={<AddRoundedIcon fontSize="small" />}
+            >
+              Mở lớp học mới
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -440,7 +466,7 @@ export function ClassesView({ tenantSlug }: ClassesViewProps) {
                     <Typography variant="subtitle1" sx={{ color: "text.secondary", mb: 1 }}>
                       {search ? "Không tìm thấy lớp học phù hợp." : "Chưa có lớp học nào."}
                     </Typography>
-                    {!search && (
+                    {!search && isCenterAdmin && (
                       <Button
                         size="small"
                         variant="contained"
@@ -511,37 +537,59 @@ export function ClassesView({ tenantSlug }: ClassesViewProps) {
                         />
                       </TableCell>
                       <TableCell>
-                        <Select
-                          size="small"
-                          value={cls.status}
-                          disabled={isUpdating}
-                          onChange={(e) =>
-                            handleStatusChange(cls, e.target.value as ClassStatus)
-                          }
-                          sx={{
-                            fontSize: "0.75rem",
-                            fontWeight: 600,
-                            height: 28,
-                            "& .MuiSelect-select": { py: 0.5, px: 1 },
-                          }}
-                        >
-                          <MenuItem value="Upcoming">Tuyển sinh</MenuItem>
-                          <MenuItem value="Ongoing">Đang học</MenuItem>
-                          <MenuItem value="Completed">Hoàn thành</MenuItem>
-                          <MenuItem value="Cancelled">Đã hủy</MenuItem>
-                        </Select>
+                        {isCenterAdmin ? (
+                          <Select
+                            size="small"
+                            value={cls.status}
+                            disabled={isUpdating}
+                            onChange={(e) =>
+                              handleStatusChange(cls, e.target.value as ClassStatus)
+                            }
+                            sx={{
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                              height: 28,
+                              "& .MuiSelect-select": { py: 0.5, px: 1 },
+                            }}
+                          >
+                            <MenuItem value="Upcoming">Tuyển sinh</MenuItem>
+                            <MenuItem value="Ongoing">Đang học</MenuItem>
+                            <MenuItem value="Completed">Hoàn thành</MenuItem>
+                            <MenuItem value="Cancelled">Đã hủy</MenuItem>
+                          </Select>
+                        ) : (
+                          <Chip
+                            size="small"
+                            label={getStatusLabel(cls.status)}
+                            color={getStatusColor(cls.status)}
+                            variant="outlined"
+                            sx={{ fontWeight: 600, fontSize: "0.75rem" }}
+                          />
+                        )}
                       </TableCell>
                       <TableCell align="right">
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          color="primary"
-                          onClick={() => setSelectedClassId(cls.id)}
-                          startIcon={<CalendarMonthRoundedIcon sx={{ fontSize: 14 }} />}
-                          sx={{ textTransform: "none", py: 0.4, px: 1.25 }}
-                        >
-                          Lịch học
-                        </Button>
+                        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 1 }}>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="primary"
+                            onClick={() => setSelectedClassId(cls.id)}
+                            startIcon={<CalendarMonthRoundedIcon sx={{ fontSize: 14 }} />}
+                            sx={{ textTransform: "none", py: 0.4, px: 1.25 }}
+                          >
+                            Lịch học
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="secondary"
+                            onClick={() => setEnrollmentClass(cls)}
+                            startIcon={<GroupOutlinedIcon sx={{ fontSize: 14 }} />}
+                            sx={{ textTransform: "none", py: 0.4, px: 1.25 }}
+                          >
+                            Học viên
+                          </Button>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   );
@@ -567,7 +615,7 @@ export function ClassesView({ tenantSlug }: ClassesViewProps) {
             variant="caption"
             sx={{ display: "block", color: "text.secondary", mt: 0.5 }}
           >
-            Hệ thống sẽ tự động rải lịch các buổi học và kiểm tra chống trùng giờ giảng viên & hạn ngạch gói cước.
+            Hệ thống sẽ tự động sắp xếp lịch các buổi học và kiểm tra chống trùng giờ của giảng viên.
           </Typography>
         </DialogTitle>
         <form onSubmit={handleCreateSubmit}>
@@ -946,7 +994,7 @@ export function ClassesView({ tenantSlug }: ClassesViewProps) {
               onClick={() => setSelectedClassId(null)}
               sx={{ borderColor: "divider", color: "text.secondary" }}
             >
-              Đóng ngăn kéo
+              Đóng
             </Button>
           </Box>
         </Box>
@@ -968,6 +1016,16 @@ export function ClassesView({ tenantSlug }: ClassesViewProps) {
           {snackbar.message}
         </Alert>
       </Snackbar>
+
+      {/* Drawer Danh sách học viên & Ghi danh */}
+      <EnrollmentDrawer
+        open={Boolean(enrollmentClass)}
+        onClose={() => setEnrollmentClass(null)}
+        classItem={enrollmentClass}
+        tenantSlug={tenantSlug}
+        isCenterAdmin={isCenterAdmin}
+        onEnrollmentChanged={() => mutate()}
+      />
     </Box>
   );
 }

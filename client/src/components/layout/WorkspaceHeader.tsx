@@ -7,6 +7,7 @@ import { ROUTES } from "@/constants/routes";
 import { useAppSelector } from "@/store/hooks";
 import { LanguageSwitcher } from "@/components/common";
 import { authService } from "@/services/authService";
+import { useCurrentRole } from "@/hooks/useCurrentRole";
 import {
   AppBar,
   Toolbar,
@@ -22,6 +23,7 @@ import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import BusinessRoundedIcon from "@mui/icons-material/BusinessRounded";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
+import AccountCircleRoundedIcon from "@mui/icons-material/AccountCircleRounded";
 
 export interface WorkspaceHeaderProps {
   tenantSlug: string;
@@ -34,6 +36,7 @@ export function WorkspaceHeader({
 }: WorkspaceHeaderProps) {
   const router = useRouter();
   const t = useAppSelector((state) => state.language.t);
+  const { roleDisplayName, isCenterAdmin, isTeacher, user } = useCurrentRole();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Format tenant slug into clean display name (e.g. "apex-english" -> "Apex English")
@@ -140,8 +143,34 @@ export function WorkspaceHeader({
           </Box>
         </Box>
 
-        {/* Right: Language, Switch Workspace, Logout */}
+        {/* Right: Role Badge, Language, Switch Workspace, Logout */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          {/* User Role Badge */}
+          <Tooltip title={`Vai trò: ${roleDisplayName}${user?.email ? ` • ${user.email}` : ""}`}>
+            <Chip
+              icon={<AccountCircleRoundedIcon sx={{ fontSize: "16px !important" }} />}
+              label={roleDisplayName}
+              size="small"
+              color={isCenterAdmin ? "primary" : isTeacher ? "warning" : "success"}
+              variant="outlined"
+              sx={{
+                fontWeight: 600,
+                fontSize: "0.75rem",
+                bgcolor: isCenterAdmin
+                  ? "rgba(79, 70, 229, 0.06)"
+                  : isTeacher
+                  ? "rgba(245, 158, 11, 0.08)"
+                  : "rgba(16, 185, 129, 0.08)",
+                borderColor: isCenterAdmin
+                  ? "primary.200"
+                  : isTeacher
+                  ? "warning.300"
+                  : "success.300",
+                "& .MuiChip-label": { px: 1 },
+              }}
+            />
+          </Tooltip>
+
           <LanguageSwitcher />
 
           <Tooltip title={t.navigation.switchWorkspace}>

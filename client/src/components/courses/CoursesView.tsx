@@ -35,6 +35,7 @@ import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import ClearRoundedIcon from "@mui/icons-material/ClearRounded";
 import { useCourses } from "@/hooks/useCourses";
+import { useCurrentRole } from "@/hooks/useCurrentRole";
 import { courseService } from "@/services/courseService";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type {
@@ -49,6 +50,7 @@ interface CoursesViewProps {
 }
 
 export function CoursesView({ tenantSlug }: CoursesViewProps) {
+  const { isCenterAdmin } = useCurrentRole();
   const { courses, isLoading, isError, error, isValidating, mutate } =
     useCourses(tenantSlug);
 
@@ -354,15 +356,17 @@ export function CoursesView({ tenantSlug }: CoursesViewProps) {
             {isValidating ? "Đang đồng bộ..." : "Làm mới"}
           </Button>
 
-          <Button
-            variant="contained"
-            size="small"
-            color="primary"
-            onClick={() => setIsCreateOpen(true)}
-            startIcon={<AddRoundedIcon fontSize="small" />}
-          >
-            Tạo khóa học
-          </Button>
+          {isCenterAdmin && (
+            <Button
+              variant="contained"
+              size="small"
+              color="primary"
+              onClick={() => setIsCreateOpen(true)}
+              startIcon={<AddRoundedIcon fontSize="small" />}
+            >
+              Tạo khóa học
+            </Button>
+          )}
         </Box>
       </Box>
 
@@ -388,12 +392,13 @@ export function CoursesView({ tenantSlug }: CoursesViewProps) {
               <TableRow>
                 <TableCell sx={{ minWidth: 240 }}>Khóa học</TableCell>
                 <TableCell sx={{ minWidth: 140 }}>Học phí tiêu chuẩn</TableCell>
-                <TableCell sx={{ minWidth: 120 }}>Trạng thái</TableCell>
-                <TableCell sx={{ minWidth: 100 }}>Kích hoạt</TableCell>
+                <TableCell sx={{ minWidth: 160 }}>Trạng thái tuyển sinh</TableCell>
                 <TableCell sx={{ minWidth: 120 }}>Ngày tạo</TableCell>
-                <TableCell align="right" sx={{ minWidth: 100 }}>
-                  Thao tác
-                </TableCell>
+                {isCenterAdmin && (
+                  <TableCell align="right" sx={{ minWidth: 100 }}>
+                    Thao tác
+                  </TableCell>
+                )}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -408,26 +413,25 @@ export function CoursesView({ tenantSlug }: CoursesViewProps) {
                       <Skeleton variant="text" width={80} />
                     </TableCell>
                     <TableCell>
-                      <Skeleton variant="rounded" width={70} height={24} />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton variant="circular" width={32} height={32} />
+                      <Skeleton variant="rounded" width={90} height={24} />
                     </TableCell>
                     <TableCell>
                       <Skeleton variant="text" width={90} />
                     </TableCell>
-                    <TableCell align="right">
-                      <Skeleton variant="circular" width={28} height={28} sx={{ ml: "auto" }} />
-                    </TableCell>
+                    {isCenterAdmin && (
+                      <TableCell align="right">
+                        <Skeleton variant="circular" width={28} height={28} sx={{ ml: "auto" }} />
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               ) : filteredCourses.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
+                  <TableCell colSpan={isCenterAdmin ? 5 : 4} align="center" sx={{ py: 6 }}>
                     <Typography variant="subtitle1" sx={{ color: "text.secondary", mb: 1 }}>
                       {search ? "Không tìm thấy khóa học phù hợp." : "Chưa có khóa học nào."}
                     </Typography>
-                    {!search && (
+                    {!search && isCenterAdmin && (
                       <Button
                         size="small"
                         variant="contained"
@@ -473,53 +477,72 @@ export function CoursesView({ tenantSlug }: CoursesViewProps) {
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          size="small"
-                          label={course.isActive ? "Đang mở" : "Tạm ngưng"}
-                          color={course.isActive ? "success" : "default"}
-                          variant={course.isActive ? "filled" : "outlined"}
-                          sx={{ fontWeight: 600, fontSize: "0.75rem" }}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Switch
-                          size="small"
-                          checked={course.isActive}
-                          disabled={isToggling}
-                          onChange={() => handleToggleActive(course)}
-                          color="success"
-                        />
+                        {isCenterAdmin ? (
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Chip
+                              size="small"
+                              label={course.isActive ? "Đang mở" : "Tạm ngưng"}
+                              color={course.isActive ? "success" : "default"}
+                              variant={course.isActive ? "filled" : "outlined"}
+                              sx={{ fontWeight: 600, fontSize: "0.75rem" }}
+                            />
+                            <Tooltip title={course.isActive ? "Tạm ngưng tuyển sinh" : "Kích hoạt tuyển sinh"}>
+                              <Switch
+                                size="small"
+                                checked={course.isActive}
+                                disabled={isToggling}
+                                onChange={() => handleToggleActive(course)}
+                                color="success"
+                                slotProps={{
+                                  input: {
+                                    "aria-label": `Bật tắt tuyển sinh cho khóa ${course.title}`,
+                                  },
+                                }}
+                              />
+                            </Tooltip>
+                          </Box>
+                        ) : (
+                          <Chip
+                            size="small"
+                            label={course.isActive ? "Đang mở" : "Tạm ngưng"}
+                            color={course.isActive ? "success" : "default"}
+                            variant={course.isActive ? "filled" : "outlined"}
+                            sx={{ fontWeight: 600, fontSize: "0.75rem" }}
+                          />
+                        )}
                       </TableCell>
                       <TableCell>
                         <Typography variant="caption" sx={{ color: "text.secondary" }}>
                           {formatDate(course.createdAt)}
                         </Typography>
                       </TableCell>
-                      <TableCell align="right">
-                        <Box sx={{ display: "flex", gap: 0.5, justifyContent: "flex-end" }}>
-                          <Tooltip title="Chỉnh sửa">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleOpenEdit(course)}
-                              sx={{ color: "text.secondary" }}
-                            >
-                              <EditRoundedIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Xóa">
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => {
-                                setDeletingCourse(course);
-                                setDeleteError(null);
-                              }}
-                            >
-                              <DeleteOutlineRoundedIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                      </TableCell>
+                      {isCenterAdmin && (
+                        <TableCell align="right">
+                          <Box sx={{ display: "flex", gap: 0.5, justifyContent: "flex-end" }}>
+                            <Tooltip title="Chỉnh sửa">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleOpenEdit(course)}
+                                sx={{ color: "text.secondary" }}
+                              >
+                                <EditRoundedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Xóa">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => {
+                                  setDeletingCourse(course);
+                                  setDeleteError(null);
+                                }}
+                              >
+                                <DeleteOutlineRoundedIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })
@@ -606,7 +629,7 @@ export function CoursesView({ tenantSlug }: CoursesViewProps) {
       </Dialog>
 
       {/* =========================================================================
-          DIALOG: CHỈNH SỬA KHÓA HỌC (HTTP PATCH)
+          DIALOG: CHỈNH SỬA KHÓA HỌC
          ========================================================================= */}
       <Dialog
         open={Boolean(editingCourse)}
@@ -617,7 +640,7 @@ export function CoursesView({ tenantSlug }: CoursesViewProps) {
         <DialogTitle sx={{ fontWeight: 700, pb: 0.5 }}>
           Chỉnh sửa khóa học
           <Typography variant="caption" sx={{ display: "block", color: "text.secondary", mt: 0.5 }}>
-            Cơ chế HTTP PATCH tự động chỉ gửi lên Backend những trường bạn thực sự thay đổi.
+            Cập nhật tên khóa học, mô tả, học phí và trạng thái tuyển sinh.
           </Typography>
         </DialogTitle>
         <form onSubmit={handleEditSubmit}>
@@ -698,7 +721,7 @@ export function CoursesView({ tenantSlug }: CoursesViewProps) {
               disabled={isUpdating}
               startIcon={isUpdating ? <CircularProgress size={14} color="inherit" /> : null}
             >
-              {isUpdating ? "Đang cập nhật..." : "Lưu thay đổi (PATCH)"}
+              {isUpdating ? "Đang cập nhật..." : "Lưu thay đổi"}
             </Button>
           </DialogActions>
         </form>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ROUTES } from "@/constants/routes";
 import { useAppSelector } from "@/store/hooks";
+import { useCurrentRole } from "@/hooks/useCurrentRole";
 import {
   Box,
   Drawer,
@@ -15,6 +16,8 @@ import {
   Typography,
   IconButton,
   Tooltip,
+  Chip,
+  Avatar,
 } from "@mui/material";
 import DashboardRoundedIcon from "@mui/icons-material/DashboardRounded";
 import MenuBookRoundedIcon from "@mui/icons-material/MenuBookRounded";
@@ -43,6 +46,27 @@ export function WorkspaceSidebar({
 }: WorkspaceSidebarProps) {
   const pathname = usePathname();
   const t = useAppSelector((state) => state.language.t);
+  const { roleDisplayName, isCenterAdmin, isTeacher, isStudent, user } = useCurrentRole();
+
+  const classesLabel = isTeacher
+    ? t.roles.instructor === "Teacher"
+      ? "My Classes"
+      : "Lớp phụ trách"
+    : isStudent
+    ? t.roles.student === "Student"
+      ? "My Classes"
+      : "Lớp học của tôi"
+    : t.navigation.classes;
+
+  const scheduleLabel = isTeacher
+    ? t.roles.instructor === "Teacher"
+      ? "Teaching Schedule"
+      : "Lịch giảng dạy"
+    : isStudent
+    ? t.roles.student === "Student"
+      ? "My Schedule"
+      : "Lịch học của tôi"
+    : t.navigation.schedule;
 
   const menuItems = [
     {
@@ -50,32 +74,37 @@ export function WorkspaceSidebar({
       href: ROUTES.TENANT.DASHBOARD(tenantSlug),
       label: t.navigation.dashboard,
       icon: <DashboardRoundedIcon fontSize="small" />,
+      allowed: true,
     },
     {
       id: "courses",
       href: ROUTES.TENANT.COURSES(tenantSlug),
       label: t.navigation.courses,
       icon: <MenuBookRoundedIcon fontSize="small" />,
+      allowed: true,
     },
     {
       id: "classes",
       href: ROUTES.TENANT.CLASSES(tenantSlug),
-      label: t.navigation.classes,
+      label: classesLabel,
       icon: <GroupsRoundedIcon fontSize="small" />,
+      allowed: true,
     },
     {
       id: "schedule",
       href: ROUTES.TENANT.SCHEDULE(tenantSlug),
-      label: t.navigation.schedule,
+      label: scheduleLabel,
       icon: <CalendarMonthRoundedIcon fontSize="small" />,
+      allowed: true,
     },
     {
       id: "attendance",
       href: ROUTES.TENANT.ATTENDANCE(tenantSlug),
       label: t.navigation.attendance,
       icon: <FactCheckRoundedIcon fontSize="small" />,
+      allowed: isCenterAdmin || isTeacher,
     },
-  ];
+  ].filter((item) => item.allowed);
 
   const checkIsActive = (href: string) => {
     if (href === ROUTES.TENANT.DASHBOARD(tenantSlug)) {
@@ -241,6 +270,76 @@ export function WorkspaceSidebar({
             );
           })}
         </List>
+      </Box>
+
+      {/* User Role Card & Profile */}
+      <Box sx={{ p: isCollapsed ? 1 : 1.5, borderTop: "1px solid", borderColor: "divider", bgcolor: "grey.50" }}>
+        {isCollapsed ? (
+          <Tooltip title={`${user?.email || "Người dùng"} (${roleDisplayName})`} placement="right">
+            <Box sx={{ display: "flex", justifyContent: "center" }}>
+              <Avatar
+                sx={{
+                  width: 32,
+                  height: 32,
+                  bgcolor: isCenterAdmin
+                    ? "primary.main"
+                    : isTeacher
+                    ? "warning.main"
+                    : "success.main",
+                  fontSize: "0.75rem",
+                  fontWeight: 700,
+                }}
+              >
+                {isCenterAdmin ? "AD" : isTeacher ? "GV" : "HV"}
+              </Avatar>
+            </Box>
+          </Tooltip>
+        ) : (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+            <Avatar
+              sx={{
+                width: 36,
+                height: 36,
+                bgcolor: isCenterAdmin
+                  ? "primary.main"
+                  : isTeacher
+                  ? "warning.main"
+                  : "success.main",
+                fontSize: "0.8125rem",
+                fontWeight: 700,
+              }}
+            >
+              {isCenterAdmin ? "AD" : isTeacher ? "GV" : "HV"}
+            </Avatar>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography
+                variant="caption"
+                noWrap
+                sx={{
+                  display: "block",
+                  fontWeight: 600,
+                  color: "text.primary",
+                  lineHeight: 1.2,
+                }}
+              >
+                {user?.fullName || user?.email || "Người dùng"}
+              </Typography>
+              <Chip
+                label={roleDisplayName}
+                size="small"
+                color={isCenterAdmin ? "primary" : isTeacher ? "warning" : "success"}
+                variant="filled"
+                sx={{
+                  height: 20,
+                  fontSize: "0.6875rem",
+                  fontWeight: 600,
+                  mt: 0.5,
+                  "& .MuiChip-label": { px: 0.75 },
+                }}
+              />
+            </Box>
+          </Box>
+        )}
       </Box>
 
       {/* Collapse Toggle at bottom (Desktop only) */}

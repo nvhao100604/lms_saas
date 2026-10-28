@@ -27,8 +27,6 @@ export async function CachedCourseCatalog({ tenantSlug }: CachedCourseCatalogPro
   cacheLife("courses");
   cacheTag(CACHE_TAGS.courses(tenantSlug), CACHE_TAGS.tenant(tenantSlug));
 
-  // Generated timestamp embedded in cache output to visualize cache hits/revalidations
-  const cachedAt = new Date().toISOString();
 
   // Simulated static course items for the tenant's curriculum
   const courses: CourseItem[] = [
@@ -69,26 +67,26 @@ export async function CachedCourseCatalog({ tenantSlug }: CachedCourseCatalogPro
 
   return (
     <section className="space-y-6">
-      {/* Cache Component Header & Metadata Banner */}
+      {/* Khung chương trình tiêu biểu Header */}
       <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs dark:border-neutral-800 dark:bg-neutral-900">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                 </svg>
-                Next.js 16 Cache Component
+                Chương trình tiêu biểu
               </span>
               <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-                Profile: courses (stale 300s, revalidate 900s)
+                Lộ trình chuẩn hóa
               </span>
             </div>
             <h3 className="mt-2 text-base font-semibold text-neutral-900 dark:text-neutral-100">
-              Cached Curriculum Catalog
+              Khung Chương trình Đào tạo Tiêu biểu
             </h3>
             <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
-              Rendered & cached at: <code className="font-mono text-neutral-700 dark:text-neutral-300">{cachedAt}</code>
+              Các khóa học cốt lõi được thiết kế theo lộ trình chuẩn quốc tế, trang bị kiến thức vững chắc cho học viên.
             </p>
           </div>
 

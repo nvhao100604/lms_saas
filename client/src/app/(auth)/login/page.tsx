@@ -159,7 +159,7 @@ function LoginForm() {
   // Helper hiển thị badge vai trò từ Redux dictionary
   const getRoleBadge = (role: string) => {
     const normalizedRole = role.toLowerCase();
-    if (normalizedRole === "admin") {
+    if (normalizedRole === "admin" || normalizedRole === "centeradmin") {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800">
           {t.roles.admin}

@@ -6,6 +6,7 @@ import type {
   CreateClassRequest,
   PatchClassRequest,
 } from "@/types/class";
+import type { ClassEnrollment } from "@/types/attendance";
 
 /**
  * Service Layer (Thin API Layer) cho phân hệ Lớp học (Classes)
@@ -57,6 +58,44 @@ export const classService = {
     );
     return res.data!;
   },
+
+  /**
+   * Lấy danh sách học viên ghi danh vào lớp
+   */
+  getEnrollments: async (classId: string): Promise<ClassEnrollment[]> => {
+    const res = await api.get<ApiResponse<ClassEnrollment[]>>(
+      ROUTES.API.CLASSES.ENROLLMENTS(classId)
+    );
+    return res.data ?? [];
+  },
+
+  /**
+   * Ghi danh học viên vào lớp học
+   */
+  enrollStudent: async (
+    classId: string,
+    studentId: string
+  ): Promise<ClassEnrollment> => {
+    const res = await api.post<ApiResponse<ClassEnrollment>>(
+      ROUTES.API.CLASSES.ENROLLMENTS(classId),
+      { studentId }
+    );
+    return res.data!;
+  },
+
+  /**
+   * Hủy ghi danh học viên khỏi lớp học
+   */
+  removeEnrollment: async (
+    classId: string,
+    studentId: string
+  ): Promise<boolean> => {
+    const res = await api.delete<ApiResponse<boolean>>(
+      ROUTES.API.CLASSES.REMOVE_ENROLLMENT(classId, studentId)
+    );
+    return res.data ?? true;
+  },
 };
 
 export default classService;
+

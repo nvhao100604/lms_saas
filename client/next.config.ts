@@ -50,6 +50,14 @@ const nextConfig: NextConfig = {
         source: "/api/members/:path*",
         destination: `${backendUrl}/api/members/:path*`,
       },
+      {
+        source: "/api/schedule/:path*",
+        destination: `${backendUrl}/api/schedule/:path*`,
+      },
+      {
+        source: "/api/sessions/:path*",
+        destination: `${backendUrl}/api/sessions/:path*`,
+      },
     ];
   },
 };

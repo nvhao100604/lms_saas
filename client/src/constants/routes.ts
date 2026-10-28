@@ -40,9 +40,19 @@ export const ROUTES = {
     CLASSES: {
       ROOT: "/api/classes",
       DETAIL: (id: string) => `/api/classes/${id}`,
+      ENROLLMENTS: (classId: string) => `/api/classes/${classId}/enrollments`,
+      REMOVE_ENROLLMENT: (classId: string, studentId: string) =>
+        `/api/classes/${classId}/enrollments/${studentId}`,
     },
     MEMBERS: {
       TEACHERS: "/api/members/teachers",
+      STUDENTS: "/api/members/students",
+    },
+    SCHEDULE: {
+      ROOT: "/api/schedule",
+    },
+    SESSIONS: {
+      ATTENDANCES: (sessionId: string) => `/api/sessions/${sessionId}/attendances`,
     },
   },
 } as const;

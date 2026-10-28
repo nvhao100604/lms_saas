@@ -4,13 +4,19 @@ import { useState, useEffect } from "react";
 import { Box } from "@mui/material";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { WorkspaceHeader } from "./WorkspaceHeader";
+import { AuthProvider, type CurrentUser } from "@/contexts/AuthContext";
 
 export interface WorkspaceShellProps {
   tenantSlug: string;
+  currentUser?: CurrentUser | null;
   children: React.ReactNode;
 }
 
-export function WorkspaceShell({ tenantSlug, children }: WorkspaceShellProps) {
+export function WorkspaceShell({
+  tenantSlug,
+  currentUser,
+  children,
+}: WorkspaceShellProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
@@ -26,56 +32,58 @@ export function WorkspaceShell({ tenantSlug, children }: WorkspaceShellProps) {
   }, [isMobileOpen]);
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        height: "100vh",
-        width: "100%",
-        overflow: "hidden",
-        bgcolor: "background.default",
-        color: "text.primary",
-      }}
-    >
-      {/* Sidebar navigation */}
-      <WorkspaceSidebar
-        tenantSlug={tenantSlug}
-        isCollapsed={isCollapsed}
-        onToggleCollapse={() => setIsCollapsed((prev) => !prev)}
-        isMobileOpen={isMobileOpen}
-        onCloseMobile={() => setIsMobileOpen(false)}
-      />
-
-      {/* Main Workspace Frame */}
+    <AuthProvider currentUser={currentUser} tenantSlug={tenantSlug}>
       <Box
         sx={{
           display: "flex",
-          flex: 1,
-          flexDirection: "column",
+          height: "100vh",
+          width: "100%",
           overflow: "hidden",
-          minWidth: 0,
+          bgcolor: "background.default",
+          color: "text.primary",
         }}
       >
-        {/* Sticky Header */}
-        <WorkspaceHeader
+        {/* Sidebar navigation */}
+        <WorkspaceSidebar
           tenantSlug={tenantSlug}
-          onToggleMobileMenu={() => setIsMobileOpen((prev) => !prev)}
+          isCollapsed={isCollapsed}
+          onToggleCollapse={() => setIsCollapsed((prev) => !prev)}
+          isMobileOpen={isMobileOpen}
+          onCloseMobile={() => setIsMobileOpen(false)}
         />
 
-        {/* Scrollable Work Area */}
+        {/* Main Workspace Frame */}
         <Box
-          component="main"
           sx={{
+            display: "flex",
             flex: 1,
-            overflowY: "auto",
-            "&:focus-visible": {
-              outline: "none",
-            },
+            flexDirection: "column",
+            overflow: "hidden",
+            minWidth: 0,
           }}
         >
-          {children}
+          {/* Sticky Header */}
+          <WorkspaceHeader
+            tenantSlug={tenantSlug}
+            onToggleMobileMenu={() => setIsMobileOpen((prev) => !prev)}
+          />
+
+          {/* Scrollable Work Area */}
+          <Box
+            component="main"
+            sx={{
+              flex: 1,
+              overflowY: "auto",
+              "&:focus-visible": {
+                outline: "none",
+              },
+            }}
+          >
+            {children}
+          </Box>
         </Box>
       </Box>
-    </Box>
+    </AuthProvider>
   );
 }
 

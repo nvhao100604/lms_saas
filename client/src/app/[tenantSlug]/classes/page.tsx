@@ -18,7 +18,7 @@ async function ClassesContent({ params }: ClassesPageProps) {
           Quản lý Lớp học & Lịch giảng dạy
         </h2>
         <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-          Thiết lập lớp học mới với cơ chế tự động rải lịch buổi học (ClassSessions), kiểm soát hạn ngạch gói cước và chống trùng lịch giảng viên.
+          Theo dõi danh sách lớp học, phòng học, giảng viên phụ trách và chi tiết lịch trình các buổi học.
         </p>
       </div>
 

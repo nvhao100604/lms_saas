@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import { WorkspaceSectionView, SectionLoadingFallback } from "@/components/layout";
+import { AttendanceView } from "@/components/attendance/AttendanceView";
+import { SectionLoadingFallback } from "@/components/layout";
 
 export interface AttendancePageProps {
   params: Promise<{
@@ -9,7 +10,7 @@ export interface AttendancePageProps {
 
 async function AttendanceContent({ params }: AttendancePageProps) {
   const { tenantSlug } = await params;
-  return <WorkspaceSectionView sectionKey="attendance" tenantSlug={tenantSlug} />;
+  return <AttendanceView tenantSlug={tenantSlug} />;
 }
 
 export default function AttendancePage({ params }: AttendancePageProps) {
