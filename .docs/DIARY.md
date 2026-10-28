@@ -897,5 +897,108 @@ Tài liệu này ghi lại toàn bộ lịch sử các phiên làm việc, nhữ
 * **MUI v9 SlotProps Compatibility**:
   - Sử dụng cấu trúc `slotProps={{ input: { startAdornment, endAdornment } }}` trên `TextField` và `slotProps={{ paper: { sx } }}` trên `Drawer` thay thế cho cú pháp cũ, đảm bảo tương thích 100% với hệ thống Type definition mới nhất của MUI v9.
 
+---
+
+## [2026-10-28] Đại tu Toàn diện Trải nghiệm Người dùng (UI/UX), Phân quyền Hiển thị RBAC & Dropdown Giảng viên
+
+### Mục tiêu trong phiên làm việc
+* Dọn sạch 100% các đoạn text, badge, banner hoặc chú thích mang tính chất "debug/demo kỹ thuật" (Silent Refresh, SWR, use cache, HTTP PATCH, BFF Proxy, RLS).
+* Thiết lập hệ thống phân quyền hiển thị (Role-Based UI Rendering) theo 3 vai trò (`CenterAdmin`, `Teacher`, `Student`), ngăn chặn hoàn toàn tình trạng người dùng không đủ quyền bấm nút rồi nhận lỗi 403 Forbidden.
+* Cung cấp dropdown `<Select>` chọn giảng viên thật thay cho ô nhập GUID thủ công trong Modal Mở lớp học mới.
+* Bổ sung gói `Microsoft.EntityFrameworkCore.InMemory` và bài kiểm thử `MembersControllerTests.cs` (xác minh 40/40 tests passed).
+* Kiểm định chất lượng toàn diện: 0 lỗi build Backend, 0 lỗi TypeScript, 0 lỗi build Next.js.
+
+### Các công việc đã thực hiện
+1. **Dọn dẹp Thuật ngữ Kỹ thuật trên UI**:
+   - Loại bỏ ghi chú *"Cơ chế HTTP PATCH tự động..."* và nhãn nút `Lưu thay đổi (PATCH)` trong `CoursesView.tsx`, chuyển thành văn bản thân thiện với nghiệp vụ đào tạo.
+   - Sửa nhãn nút trong Drawer xem lịch học từ *"Đóng ngăn kéo"* thành *"Đóng"*.
+   - Rà soát các Server Components, loại bỏ các comment kỹ thuật dư thừa trong `courses/page.tsx`.
+2. **Triển khai Phân quyền Hiển thị trên UI (RBAC UI Rendering)**:
+   - `AuthContext.tsx` & `useCurrentRole()`: Nhận diện chính xác 3 vai trò `CenterAdmin`, `Teacher`, `Student` kèm nhãn hiển thị thân thiện bằng tiếng Việt (`"Quản trị viên"`, `"Giảng viên"`, `"Học viên"`). Bổ sung fallback gọi `/api/auth/me` để đảm bảo context luôn được hydrate đầy đủ kể cả khi render phía client.
+   - `CoursesView.tsx`:
+     + `CenterAdmin`: Hiển thị đầy đủ nút `"+ Tạo khóa học"`, cột *"Thao tác"* (Sửa, Xóa) và công tắc `<Switch>` bật/tắt tuyển sinh (`isActive`).
+     + `Teacher` / `Student`: Ẩn hoàn toàn nút Tạo, Sửa, Xóa và cột Thao tác. Cột trạng thái tuyển sinh chuyển thành `<Chip>` Badge tĩnh chỉ đọc.
+   - `ClassesView.tsx`:
+     + `CenterAdmin`: Hiển thị nút `"+ Mở lớp học mới"` và dropdown `<Select>` đổi trạng thái lớp.
+     + `Teacher` / `Student`: Ẩn hoàn toàn nút Mở lớp mới. Cột trạng thái lớp chuyển thành `<Chip>` Badge tĩnh chỉ đọc dựa trên `getStatusLabel` và `getStatusColor`.
+     + Nút *"Lịch học"* (xem `ClassSessions`) tiếp tục hiển thị cho mọi vai trò.
+   - `WorkspaceSidebar.tsx` & `WorkspaceHeader.tsx`:
+     + Sidebar: Điều chỉnh nhãn và danh mục theo vai trò. Ẩn menu *"Điểm danh"* đối với Học viên (chỉ hiển thị cho Admin và Giảng viên). Đối với Giảng viên, nhãn hiển thị *"Lớp phụ trách"* / *"Lịch giảng dạy"*; đối với Học viên hiển thị *"Lớp học của tôi"* / *"Lịch học của tôi"*.
+     + Header: Hiển thị Avatar và Chip nhãn vai trò thân thiện (`"Quản trị viên"`, `"Giảng viên"`, `"Học viên"`).
+3. **Backend .NET 10 BFF & Kiểm thử MembersController**:
+   - `BFF/LmsSaaS.Core/DTOs/Members/TenantTeacherResponse.cs`: `record TenantTeacherResponse(Guid UserId, string FullName, string Email, string Role)`.
+   - `BFF/LmsSaaS.Api/Controllers/MembersController.cs`: Endpoint `GET /api/members/teachers` (`[Authorize]`) lọc các thành viên `Teacher` hoặc `CenterAdmin` trong trung tâm qua `ITenantEntity`.
+   - Cài đặt `Microsoft.EntityFrameworkCore.InMemory` trong `LmsSaaS.UnitTests.csproj`.
+   - Viết bài test `MembersControllerTests.cs` xác minh `GetTeachers()` lọc chính xác `CenterAdmin` và `Teacher`, loại trừ `Student`.
+4. **Kiểm tra và Xác minh Toàn diện**:
+   - `dotnet test BFF/LmsSaaS.slnx`: 40/40 tests passed (100%).
+   - `dotnet build BFF/LmsSaaS.slnx`: 0 Error, 0 Warning.
+   - `pnpm --dir client exec tsc --noEmit`: 0 lỗi TypeScript.
+   - `pnpm --dir client run build`: 15/15 routes static & dynamic compile thành công với Turbopack.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Phân quyền Hiển thị Chủ động (Proactive UI-Level RBAC)**:
+  - Thay vì để người dùng bấm nút rồi nhận lỗi `403 Forbidden` từ Backend, việc ẩn hoàn toàn các nút hành động đặc quyền hoặc chuyển đổi chúng thành Badge chỉ đọc giúp cải thiện vượt bậc trải nghiệm người dùng, đảm bảo tính thẩm mỹ và tính chuyên nghiệp của sản phẩm SaaS giáo dục.
+* **Tích hợp Fallback Hydration cho AuthContext**:
+  - Việc bổ sung `useEffect` gọi `/api/auth/me` trong `AuthProvider` khi `currentUser` chưa có sẵn giúp cho các Client Component luôn có được thông tin xác thực chính xác ngay cả trong các trường hợp client navigation hoặc khi component được mount độc lập ngoài SSR flow.
+
+---
+
+## [2026-10-28] Triển khai 3 Phân hệ Đào tạo: Ghi danh Học viên, Thời khóa biểu Tuần & Sổ Điểm danh Buổi học
+
+### Mục tiêu trong phiên làm việc
+* Triển khai hoàn chỉnh 3 tính năng đào tạo nghiệp vụ cốt lõi theo đúng đặc tả kỹ thuật đã duyệt:
+  1. **Ghi danh học viên (`Enrollments`)**: Kiểm soát chặt chẽ sĩ số `MaxCapacity`, quản lý học viên qua Drawer chuyên biệt trong `ClassesView`.
+  2. **Thời khóa biểu tuần (`/schedule`)**: Lưới 7 ngày (Thứ 2 đến Chủ Nhật), phân quyền hiển thị theo 3 vai trò (`CenterAdmin`, `Teacher`, `Student`), liên kết trực tiếp sang sổ điểm danh.
+  3. **Sổ điểm danh buổi học (`/attendance`)**: Chấm điểm danh theo lô (Batch Upsert) bọc trong 1 Database Transaction duy nhất, 4 thẻ KPI thống kê chuyên cần, ô nhập chủ đề buổi học (`Topic`), nút đánh dấu tất cả có mặt.
+* Tuân thủ 100% quy chuẩn CQS (không dùng hậu tố `Dto`), Multi-tenant Isolation qua `ITenantEntity`, giao diện đồng nhất Material UI v9 và không để lộ thuật ngữ kỹ thuật hạ tầng.
+* Đảm bảo 100% tests backend và build client thành công.
+
+### Các công việc đã thực hiện
+1. **Thiết kế & Lập kế hoạch**:
+   - Sử dụng kỹ năng `brainstorming` làm rõ 3 câu hỏi kiến trúc cốt lõi với người dùng.
+   - Biên soạn đặc tả kỹ thuật `docs/superpowers/specs/2026-10-28-enrollment-schedule-attendance-design.md`.
+   - Sử dụng kỹ năng `writing-plans` lập kế hoạch 10 tasks chi tiết tại `docs/superpowers/plans/2026-10-28-enrollment-schedule-attendance.md`.
+2. **Triển khai Backend .NET 10 BFF**:
+   - **Database Schema**: Bổ sung Unique Index `(ClassSessionId, StudentId)` cho thực thể `Attendance` trong `AppDbContext.cs`.
+   - **CQS DTOs**: Tạo các DTOs chuẩn xác không hậu tố `Dto`: `TenantStudentResponse`, `CreateEnrollmentRequest`, `ClassEnrollmentResponse`, `ScheduleSessionResponse`, `AttendanceItemRequest`, `SaveSessionAttendanceRequest`, `StudentAttendanceRowResponse`, `SessionAttendanceSheetResponse`.
+   - **MembersController**: Thêm `GET /api/members/students` lấy danh sách học viên trung tâm (`RoleInTenant.Student`).
+   - **ClassesController**:
+     + `GET /api/classes/{id}/enrollments`: Lấy danh sách học viên ghi danh vào lớp.
+     + `POST /api/classes/{id}/enrollments`: Kiểm tra sĩ số `MaxCapacity`, chống ghi danh trùng lặp, trả về 201 Created.
+     + `DELETE /api/classes/{id}/enrollments/{studentId}`: Hủy ghi danh học viên, bảo lưu lịch sử điểm danh cũ cho mục đích audit.
+   - **ScheduleController**: `GET /api/schedule` hỗ trợ lọc theo tuần (`from`, `to`) và lọc theo vai trò người dùng (Admin xem toàn bộ + lọc theo lớp/giảng viên, Teacher xem lớp phụ trách, Student xem lớp ghi danh kèm trạng thái chuyên cần `MyAttendanceStatus`).
+   - **AttendancesController**: `GET /api/sessions/{sessionId}/attendances` và `PUT` lưu điểm danh theo lô trong 1 Database Transaction All-or-Nothing.
+   - **Unit Tests xUnit**:
+     + `DbContextModelTests`: Kiểm tra unique index của `Attendance`.
+     + `MembersControllerTests`: Kiểm tra lấy đúng danh sách học viên.
+     + `EnrollmentTests`: Kiểm tra chặn vượt sĩ số `MaxCapacity`, chặn ghi danh trùng lặp, ghi danh thành công, hủy ghi danh.
+     + `ScheduleControllerTests`: Kiểm tra lọc theo vai trò Teacher và Student.
+     + `AttendanceControllerTests`: Kiểm tra số liệu sĩ số và Batch Upsert transactional.
+     + Toàn bộ **50/50 tests passed 100%**.
+3. **Triển khai Frontend Next.js 16 Material UI**:
+   - **Next.js Rewrites & Routes**: Bổ sung rewrites `/api/schedule/:path*` và `/api/sessions/:path*` trong `next.config.ts`. Cập nhật `routes.ts`.
+   - **Types, Services & Hooks**:
+     + Các interfaces TypeScript: `schedule.ts`, `attendance.ts`.
+     + Services: `memberService.getStudents()`, `classService.getEnrollments()`, `enrollStudent()`, `removeEnrollment()`, `scheduleService.getSchedule()`, `attendanceService.getSessionAttendance()`, `saveAttendance()`.
+     + SWR Hooks: `useStudents`, `useClassEnrollments`, `useSchedule`, `useSessionAttendance`.
+   - **`EnrollmentDrawer.tsx`**: Tích hợp trong `ClassesView.tsx` với nút icon *"Học viên"*, chip sĩ số realtime, form chọn ghi danh và bảng danh sách học viên kèm nút xóa dành riêng cho `CenterAdmin`.
+   - **`ScheduleView.tsx`**: Lưới 7 ngày (Thứ 2 đến Chủ Nhật), thanh chuyển tuần (`Tuần trước`, `Tuần này`, `Tuần sau`), highlight ngày hôm nay, bộ lọc lớp/giảng viên, thẻ buổi học kèm nút *"Điểm danh"* và badge trạng thái chuyên cần cá nhân cho học viên.
+   - **`AttendanceView.tsx`**: Bộ chọn lớp & buổi học (tự động điền qua URL searchParams), 4 thẻ KPI thống kê chuyên cần, ô nhập chủ đề buổi học (`Topic`), nút *"Đánh dấu tất cả Có mặt"*, `<ToggleButtonGroup>` 4 trạng thái và ô nhập ghi chú. Tối ưu kiến trúc render bằng cách tách component con `AttendanceSheetDetail` theo `key={selectedSessionId}` để khởi tạo state tự nhiên không cần `useEffect`, tuân thủ nghiêm ngặt quy tắc của React 19 và ESLint.
+4. **Kiểm tra và Xác minh Toàn diện**:
+   - `dotnet test BFF/LmsSaaS.slnx`: 50/50 tests passed (100%).
+   - `pnpm --dir client exec eslint`: 0 lỗi, 0 cảnh báo.
+   - `pnpm --dir client exec tsc --noEmit`: 0 lỗi TypeScript.
+   - `pnpm --dir client run build`: 15/15 routes static & dynamic (PPR) compile thành công.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Tính toàn vẹn Dữ liệu Điểm danh (Transaction-safe Batch Upsert)**:
+  - Thao tác chấm điểm danh cả lớp liên quan đến việc cập nhật đồng thời nhiều bản ghi `Attendance` và trường `Topic` của buổi học. Việc bọc toàn bộ thao tác trong `await dbContext.Database.BeginTransactionAsync()` đảm bảo tính toàn vẹn (ACID): nếu có bất kỳ lỗi nào xảy ra trong quá trình ghi nhận một học viên, toàn bộ thay đổi sẽ được Rollback, không để lại dữ liệu dở dang.
+* **Chính sách Xóa Học viên khỏi Lớp (Audit History Retention)**:
+  - Khi học viên bị hủy ghi danh khỏi lớp (`Enrollment`), bản ghi ghi danh bị xóa nhưng các bản ghi `Attendance` của các buổi học đã diễn ra trước đó vẫn được giữ lại nguyên vẹn trong hệ thống nhằm đảm bảo tính toàn vẹn của lịch sử đào tạo và số liệu thống kê trung tâm.
+* **Kiến trúc State Phía Client Tránh Cascading Renders**:
+  - Tách `AttendanceSheetDetail` với `key={selectedSessionId}` cho phép React tự động unmount và mount lại component con khi đổi buổi học, khởi tạo local state một lần duy nhất lúc mount thay vì gọi `setState` đồng bộ bên trong `useEffect`, giúp loại bỏ hoàn toàn cảnh báo `react-hooks/set-state-in-effect` của React 19 Compiler.
+
+
 
 

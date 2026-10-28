@@ -8,7 +8,7 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 
 | Trạng thái | Số lượng | Tỷ lệ |
 | :--- | :--- | :--- |
-| **Đã hoàn thành (Done)** | 22 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components, Courses & Classes BFF API, MUI Enterprise SaaS Transformation & Full Courses/Classes Views) |
+| **Đã hoàn thành (Done)** | 24 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components, Courses & Classes BFF API, MUI Enterprise SaaS Transformation, UI/UX Overhaul & Role-Based UI Rendering, Enrollments, Schedule & Attendance Management) |
 | **Đang tiến hành (In Progress)** | 0 | 0% |
 | **Kế hoạch sắp tới (Todo)** | 0 | - |
 
@@ -329,10 +329,61 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
     - Backend: `dotnet test BFF/LmsSaaS.slnx` đạt 39/39 passed (100%).
     - Frontend: `npx tsc --noEmit` đạt 0 lỗi; `pnpm run build` thành công 14/14 static & dynamic routes trong 5.8s.
 * **Người thực hiện**: AI Agent & User.
+ 
+### [2026-10-28] Đại tu Toàn diện Trải nghiệm Người dùng (UI/UX), Phân quyền Hiển thị RBAC & Tích hợp Dropdown Giảng viên
+* **Mô tả**: Dọn sạch triệt để toàn bộ thuật ngữ/ghi chú kỹ thuật hạ tầng trên UI, thiết lập cơ chế phân quyền hiển thị (Role-Based UI Rendering) theo vai trò (`CenterAdmin`, `Teacher`, `Student`), tích hợp Dropdown chọn giảng viên thật thay cho việc nhập UUID thủ công, và hoàn thiện bộ kiểm thử tự động cho cả BFF và Client.
+* **Kết quả**:
+  * **Dọn sạch thuật ngữ kỹ thuật trên giao diện (`client/src/`)**:
+    - Rà soát và loại bỏ hoàn toàn các cụm từ *"HTTP PATCH"*, *"SWR"*, *"use cache"*, *"Silent Refresh"*, *"401 Interceptor"*, *"BFF Proxy"*, *"RLS"*.
+    - Thay thế bằng văn bản định hướng nghiệp vụ giáo dục chuẩn mực: tiêu đề danh mục khóa học, mô tả chương trình đào tạo, nút *"Lưu thay đổi"* thay cho *"Lưu thay đổi (PATCH)"*.
+    - Sửa nhãn nút Drawer xem lịch học từ *"Đóng ngăn kéo"* sang *"Đóng"*.
+  * **Thiết lập Phân quyền Hiển thị UI theo Role (RBAC)**:
+    - `useCurrentRole()` & `AuthContext`: Nhận diện chuẩn xác 3 vai trò `CenterAdmin`, `Teacher`, `Student` kèm nhãn tiếng Việt (`"Quản trị viên"`, `"Giảng viên"`, `"Học viên"`). Bổ sung fallback tự động gọi `/api/auth/me` khi mount phía client.
+    - `CoursesView.tsx`:
+      + `CenterAdmin`: Hiển thị nút `"+ Tạo khóa học"`, cột *"Thao tác"* (Sửa, Xóa), và công tắc `<Switch>` bật/tắt tuyển sinh trực tiếp.
+      + `Teacher` & `Student`: Ẩn hoàn toàn nút Tạo, Sửa, Xóa và cột Thao tác. Cột trạng thái tuyển sinh chuyển thành `<Chip>` Badge tĩnh chỉ đọc.
+    - `ClassesView.tsx`:
+      + `CenterAdmin`: Hiển thị nút `"+ Mở lớp học mới"` và dropdown `<Select>` đổi trạng thái lớp.
+      + `Teacher` & `Student`: Ẩn hoàn toàn nút Mở lớp mới. Cột trạng thái chuyển thành Chip Badge tĩnh (`getStatusColor` và `getStatusLabel`).
+      + Nút *"Lịch học"* (Xem `ClassSessions` Drawer) vẫn hiển thị cho mọi vai trò.
+    - `WorkspaceSidebar.tsx` & `WorkspaceHeader.tsx`:
+      + Sidebar điều chỉnh nhãn và danh mục theo vai trò: Học viên ẩn menu *"Điểm danh"* (chỉ dành cho Admin & Giảng viên), nhãn đổi thành *"Lớp học của tôi"* / *"Lịch học của tôi"*.
+      + Header hiển thị huy hiệu vai trò thân thiện (`"Quản trị viên"`, `"Giảng viên"`, `"Học viên"`).
+  * **Tầng Backend BFF .NET 10 & Integration Dropdown Giảng viên**:
+    - [BFF/LmsSaaS.Core/DTOs/Members/TenantTeacherResponse.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Members/TenantTeacherResponse.cs): `record TenantTeacherResponse(Guid UserId, string FullName, string Email, string Role)`.
+    - [BFF/LmsSaaS.Api/Controllers/MembersController.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Api/Controllers/MembersController.cs): Endpoint `GET /api/members/teachers` (`[Authorize]`) lọc các thành viên `Teacher` hoặc `CenterAdmin` trong trung tâm qua `ITenantEntity`.
+    - Bổ sung `Microsoft.EntityFrameworkCore.InMemory` và bài kiểm thử `MembersControllerTests.cs` (xác minh lọc đúng role, không lấy Student).
+    - Client tích hợp hook `useTeachers(tenantSlug)` và `<Select>` chọn giảng viên hiển thị `"Họ tên (Email)"` trong Modal mở lớp mới.
+  * **Kiểm định chất lượng**:
+    - Backend: `dotnet test BFF/LmsSaaS.slnx` đạt 40/40 tests passed 100%; `dotnet build BFF/LmsSaaS.slnx` đạt 0 Error, 0 Warning.
+    - Frontend: `pnpm --dir client exec tsc --noEmit` đạt 0 lỗi TypeScript; `pnpm --dir client run build` thành công 15/15 static & dynamic routes.
+* **Người thực hiện**: AI Agent & User.
+
+### [2026-10-28] Triển khai 3 Phân hệ Đào tạo Cốt lõi: Ghi danh Học viên (Enrollments), Thời khóa biểu Tuần (/schedule) & Sổ Điểm danh Buổi học (/attendance)
+* **Mô tả**: Thiết kế và triển khai trọn vẹn từ .NET 10 BFF đến Next.js 16 Material UI cho 3 phân hệ nghiệp vụ đào tạo: Quản lý ghi danh học viên với kiểm soát nghiêm ngặt `MaxCapacity`, Thời khóa biểu lưới 7 ngày phân quyền theo vai trò, và Sổ điểm danh theo lô (Batch Upsert) bọc trong 1 Database Transaction duy nhất.
+* **Kết quả**:
+  * **1. Phân hệ Ghi danh Học viên (`Enrollments`)**:
+    - **Backend .NET 10**: Bổ sung `GET /api/members/students` lấy danh sách học viên trong trung tâm (`RoleInTenant.Student`), `GET /api/classes/{id}/enrollments`, `POST /api/classes/{id}/enrollments` (kiểm tra hạn ngạch `MaxCapacity`, chống ghi danh trùng lặp), và `DELETE /api/classes/{id}/enrollments/{studentId}` (hủy ghi danh nhưng giữ lại lịch sử điểm danh để phục vụ audit).
+    - **Unit Tests**: `EnrollmentTests.cs` (4 test cases) xác minh chặn khi lớp đầy, chặn trùng lặp, ghi danh thành công và hủy ghi danh.
+    - **Frontend Client**: Component [EnrollmentDrawer.tsx](file:///d:/Project/SAAS/client/src/components/classes/EnrollmentDrawer.tsx) tích hợp vào [ClassesView.tsx](file:///d:/Project/SAAS/client/src/components/classes/ClassesView.tsx) với nút icon *"Học viên"*, chip hiển thị sĩ số realtime (`count / MaxCapacity`), form chọn học viên ghi danh và bảng danh sách học viên kèm nút xóa dành riêng cho `CenterAdmin`.
+  * **2. Phân hệ Thời khóa biểu Tuần (`/schedule`)**:
+    - **Backend .NET 10**: [ScheduleController.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Api/Controllers/ScheduleController.cs) endpoint `GET /api/schedule` hỗ trợ lọc theo tuần (`from`, `to`) và phân quyền vai trò: `CenterAdmin` xem toàn bộ (lọc tùy chọn theo lớp/giảng viên), `Teacher` chỉ xem lớp mình giảng dạy, `Student` chỉ xem lớp đã ghi danh kèm trạng thái điểm danh cá nhân `MyAttendanceStatus`.
+    - **Unit Tests**: `ScheduleControllerTests.cs` (2 test cases) kiểm tra lọc đúng theo role Teacher và Student.
+    - **Frontend Client**: [ScheduleView.tsx](file:///d:/Project/SAAS/client/src/components/schedule/ScheduleView.tsx) hiển thị lưới 7 cột ngày trực quan (Thứ 2 đến Chủ Nhật), điều khiển chuyển tuần mượt mà, highlight ngày hôm nay, thẻ buổi học hiển thị giờ học, phòng học, giảng viên, nút *"Điểm danh"* (dành cho Admin/Giảng viên) chuyển hướng sang sổ điểm danh, và badge trạng thái điểm danh cho Học viên.
+  * **3. Phân hệ Sổ Điểm danh Buổi học (`/attendance`)**:
+    - **Database**: Bổ sung Unique Index trên `(ClassSessionId, StudentId)` cho thực thể `Attendance` trong [AppDbContext.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Infrastructure/Persistence/AppDbContext.cs).
+    - **Backend .NET 10**: [AttendancesController.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Api/Controllers/AttendancesController.cs) hỗ trợ `GET /api/sessions/{sessionId}/attendances` và `PUT` lưu điểm danh theo lô (Batch Upsert) bọc trong `await dbContext.Database.BeginTransactionAsync()` đảm bảo tính toàn vẹn (All-or-Nothing).
+    - **Unit Tests**: `AttendanceControllerTests.cs` (2 test cases) kiểm tra lấy sổ điểm danh, tính toán sĩ số và batch upsert thành công.
+    - **Frontend Client**: [AttendanceView.tsx](file:///d:/Project/SAAS/client/src/components/attendance/AttendanceView.tsx) với bộ chọn lớp & buổi học (tự động nhận qua URL `classId` & `sessionId`), 4 thẻ KPI thống kê realtime (Tổng số, Có mặt, Đi muộn, Vắng), ô nhập chủ đề bài giảng (`Topic`), nút *"Đánh dấu tất cả Có mặt"*, `<ToggleButtonGroup>` 4 trạng thái (Có mặt, Đi muộn, Có phép, Vắng) và ô ghi chú cho từng học viên.
+  * **Kiểm định chất lượng toàn diện**:
+    - Backend: `dotnet test BFF/LmsSaaS.slnx` đạt **50/50 tests passed 100%**.
+    - Frontend: `pnpm --dir client exec tsc --noEmit` đạt **0 lỗi TypeScript**; `pnpm --dir client run build` hoàn thành xuất sắc **15/15 routes static & dynamic (PPR)**.
+* **Người thực hiện**: AI Agent & User.
 
 ---
 
 ## 3. TÍNH NĂNG ĐANG TIẾN HÀNH (IN PROGRESS)
+
 *(Hiện chưa có task nào đang chạy)*
 
 ---
