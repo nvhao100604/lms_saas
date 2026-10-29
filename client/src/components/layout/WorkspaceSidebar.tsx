@@ -24,6 +24,7 @@ import MenuBookRoundedIcon from "@mui/icons-material/MenuBookRounded";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
 import CalendarMonthRoundedIcon from "@mui/icons-material/CalendarMonthRounded";
 import FactCheckRoundedIcon from "@mui/icons-material/FactCheckRounded";
+import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
 import SchoolRoundedIcon from "@mui/icons-material/SchoolRounded";
 import ChevronLeftRoundedIcon from "@mui/icons-material/ChevronLeftRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
@@ -102,6 +103,13 @@ export function WorkspaceSidebar({
       href: ROUTES.TENANT.ATTENDANCE(tenantSlug),
       label: t.navigation.attendance,
       icon: <FactCheckRoundedIcon fontSize="small" />,
+      allowed: isCenterAdmin || isTeacher,
+    },
+    {
+      id: "members",
+      href: ROUTES.TENANT.MEMBERS(tenantSlug),
+      label: t.navigation.members,
+      icon: <PeopleAltOutlinedIcon fontSize="small" />,
       allowed: isCenterAdmin || isTeacher,
     },
   ].filter((item) => item.allowed);

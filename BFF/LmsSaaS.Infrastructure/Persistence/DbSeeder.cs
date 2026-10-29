@@ -22,6 +22,7 @@ public static class DbSeeder
                 Price = 0m,
                 MaxClassesLimit = 3,
                 MaxStudentsPerClass = 20,
+                MaxStudentsLimit = 20,
                 IsActive = true
             };
             await context.SubscriptionPlans.AddAsync(freePlan);
@@ -38,6 +39,7 @@ public static class DbSeeder
                 Price = 500000m,
                 MaxClassesLimit = 10,
                 MaxStudentsPerClass = 50,
+                MaxStudentsLimit = 100,
                 IsActive = true
             };
             await context.SubscriptionPlans.AddAsync(proPlan);

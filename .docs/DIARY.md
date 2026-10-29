@@ -1061,6 +1061,50 @@ Tài liệu này ghi lại toàn bộ lịch sử các phiên làm việc, nhữ
 * **Giao diện Người dùng Thân thiện & Zero Technical Jargon**:
   - Hệ thống thông báo là tính năng tương tác trực tiếp với giáo viên và học viên. Mọi thông tin hiển thị trên `NotificationBell` đều sử dụng ngôn ngữ tự nhiên, tiếng Việt chuẩn mực và tuyệt đối không để lộ bất kỳ thuật ngữ kỹ thuật nào của hạ tầng (như *RabbitMQ*, *MassTransit*, *Consumer*, *Queue*).
 
+---
+
+## [2026-10-29] Mở rộng MembersController & Xây dựng Phân hệ Quản lý Thành viên Trung tâm
+
+### Mục tiêu trong phiên làm việc
+* Mở rộng `MembersController` ở tầng .NET 10 BFF tuân thủ Clean Architecture, chuẩn CQS không dùng hậu tố `Dto`.
+* Thực thi 3 Quy tắc nghiệp vụ cốt lõi:
+  1. Cấp phát thành viên thông minh: Kiểm soát hạn ngạch gói cước `MaxStudentsLimit`, tự tạo hoặc tìm kiếm `User`, chặn thêm trùng email trong trung tâm, giao dịch DB an toàn.
+  2. Bảo vệ an toàn Quản trị viên (`Self-Lockout Prevention`): Chặn tuyệt đối việc CenterAdmin tự hạ quyền hoặc tự khóa tài khoản của chính mình.
+  3. Đồng bộ hóa Dropdown Giảng viên & Học viên: Chỉ hiển thị các thành viên đang hoạt động (`IsActive == true`).
+* Xây dựng giao diện Quản lý Thành viên (`/[tenantSlug]/members`) ở tầng Client với 100% Material UI (MUI v9), SWR, Typescript, đa ngôn ngữ Tiếng Việt & Tiếng Anh (`vi.ts` / `en.ts`), và tích hợp vào Sidebar.
+
+### Các công việc đã thực hiện
+1. **Domain & Entity Updates**:
+   - `TenantMember.cs`: Bổ sung `public bool IsActive { get; set; } = true;`.
+   - `SubscriptionPlan.cs`: Bổ sung `public int MaxStudentsLimit { get; set; } = 100;`.
+   - `DbSeeder.cs`: Cấu hình `MaxStudentsLimit = 20` cho gói FREE và `MaxStudentsLimit = 100` cho gói PRO.
+2. **CQS Models (`BFF/LmsSaaS.Core/DTOs/Members/`)**:
+   - `TenantMemberResponse.cs` (record chứa `MemberId`, `UserId`, `FullName`, `Email`, `Role`, `IsActive`, `JoinedAt`).
+   - `CreateTenantMemberRequest.cs` (Data Annotations validation, `InitialPassword`).
+   - `PatchTenantMemberRequest.cs` (Partial update cho `FullName`, `Role`, `IsActive`).
+3. **Mở rộng API BFF (`MembersController.cs`)**:
+   - `GET /api/members/teachers` & `GET /api/members/students`: Bổ sung lọc `tm.IsActive`.
+   - `GET /api/members?role=&search=`: Hỗ trợ tìm kiếm theo họ tên/email và lọc theo vai trò.
+   - `POST /api/members` (`[Authorize(Roles = "CenterAdmin")]`): Kiểm tra hạn ngạch học viên của gói cước, tìm hoặc tạo User với mật khẩu mặc định `Lms@123456`, chặn thêm trùng email trong trung tâm, lưu `TenantMember` an toàn qua transaction.
+   - `PATCH /api/members/{memberId:guid}` (`[Authorize(Roles = "CenterAdmin")]`): Chặn Admin tự hạ quyền hoặc tự khóa tài khoản của chính mình, cập nhật họ tên, vai trò và trạng thái.
+4. **Kiểm thử tự động Backend**:
+   - Mở rộng `MembersControllerTests.cs` (61 tests toàn solution passed 100%, 0 warnings, 0 errors).
+5. **Tầng Frontend Client (Next.js 16, MUI, SWR, i18n)**:
+   - Routes: `ROUTES.TENANT.MEMBERS` và `ROUTES.API.MEMBERS.ROOT`, `DETAIL`.
+   - Types & Service: `src/types/member.ts`, `src/services/memberService.ts`.
+   - Hook: `src/hooks/useMembers.ts` với SWR caching và optimistic update.
+   - Menu: Bổ sung "Thành viên" / "Members" vào `WorkspaceSidebar.tsx` với `PeopleAltOutlinedIcon`.
+   - Component: `MembersView.tsx` (4 KPI Cards, thanh công cụ tìm kiếm & lọc, bảng danh sách thành viên với quick-change role `<Select>` và status `<Switch>` được vô hiệu hóa trên dòng của chính mình, modal thêm thành viên có toggle ẩn/hiện mật khẩu và alert lỗi).
+   - Từ điển song ngữ: Thêm mục `members` vào `locales/types.ts`, `locales/vi.ts` và `locales/en.ts`.
+   - Page: `src/app/[tenantSlug]/members/page.tsx` bọc `<Suspense>`.
+   - Biên dịch: `pnpm --dir client exec tsc --noEmit` đạt **0 lỗi**, `pnpm --dir client run build` thành công **16/16 routes**.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Bảo vệ Quản trị viên khỏi rủi ro Tự khóa (Self-Lockout Prevention)**:
+  - Cả ở tầng BFF (qua kiểm tra `member.UserId == currentUserId` trong `MembersController`) và ở tầng Client UI (qua việc disable `Switch` và thay thế dropdown đổi quyền bằng chip tĩnh với tooltip cảnh báo), hệ thống triệt tiêu hoàn toàn rủi ro người quản trị vô tình khóa hoặc giáng quyền tài khoản của chính mình, dẫn đến việc trung tâm mất quyền quản trị.
+* **Cấp phát thành viên thông minh và Kiểm soát hạn ngạch gói cước**:
+  - Khi thêm học viên mới, hệ thống tự động kiểm tra trần số lượng học viên của gói dịch vụ mà trung tâm đang sử dụng (`MaxStudentsLimit`) trước khi cho phép thêm. Nếu học viên đã có tài khoản trên hệ thống, trung tâm chỉ cần gắn thêm quan hệ thành viên (`TenantMember`) mà không tạo trùng bản ghi người dùng (`User`), đảm bảo kiến trúc Multi-tenant liên thông hoàn hảo.
+
 
 
 

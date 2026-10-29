@@ -10,6 +10,7 @@ public class TenantMember : ITenantEntity
     public Guid TenantId { get; set; }
     public Guid UserId { get; set; }
     public RoleInTenant Role { get; set; } = RoleInTenant.Student;
+    public bool IsActive { get; set; } = true;
     public DateTimeOffset JoinedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public Tenant Tenant { get; set; } = null!;

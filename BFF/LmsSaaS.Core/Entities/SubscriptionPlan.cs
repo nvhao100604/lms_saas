@@ -11,6 +11,7 @@ public class SubscriptionPlan
     public decimal Price { get; set; } = 0m;
     public int MaxClassesLimit { get; set; }
     public int MaxStudentsPerClass { get; set; }
+    public int MaxStudentsLimit { get; set; } = 100;
     public bool IsActive { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 

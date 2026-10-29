@@ -121,6 +121,7 @@ export interface NavigationTranslations {
   classes: string;
   schedule: string;
   attendance: string;
+  members: string;
   workspaceBadge: string;
   switchWorkspace: string;
   logout: string;
@@ -160,6 +161,55 @@ export interface NotificationTranslations {
   daysAgo: string;
 }
 
+export interface MembersTranslations {
+  pageTitle: string;
+  pageSubtitle: string;
+  kpiTotalMembers: string;
+  kpiTotalMembersSub: string;
+  kpiAdmins: string;
+  kpiAdminsSub: string;
+  kpiTeachers: string;
+  kpiTeachersSub: string;
+  kpiStudents: string;
+  kpiStudentsSub: string;
+  searchPlaceholder: string;
+  filterRoleAll: string;
+  filterRoleAdmin: string;
+  filterRoleTeacher: string;
+  filterRoleStudent: string;
+  filterStatusAll: string;
+  filterStatusActive: string;
+  filterStatusInactive: string;
+  addMemberBtn: string;
+  colMember: string;
+  colEmail: string;
+  colRole: string;
+  colStatus: string;
+  colJoinedAt: string;
+  statusActive: string;
+  statusInactive: string;
+  dialogTitle: string;
+  dialogSubtitle: string;
+  fullNameLabel: string;
+  fullNamePlaceholder: string;
+  emailLabel: string;
+  emailPlaceholder: string;
+  roleLabel: string;
+  initialPasswordLabel: string;
+  initialPasswordPlaceholder: string;
+  initialPasswordHelper: string;
+  submitBtn: string;
+  submittingBtn: string;
+  cancelBtn: string;
+  addSuccess: string;
+  quickRoleChangeSuccess: string;
+  quickStatusChangeSuccess: string;
+  selfLockoutWarning: string;
+  emptyTitle: string;
+  emptyDesc: string;
+  readOnlyNotice: string;
+}
+
 export interface Translations {
   common: CommonTranslations;
   auth: AuthTranslations;
@@ -170,4 +220,5 @@ export interface Translations {
   navigation: NavigationTranslations;
   sections: SectionsTranslations;
   notifications: NotificationTranslations;
+  members: MembersTranslations;
 }

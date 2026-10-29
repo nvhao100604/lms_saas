@@ -12,6 +12,7 @@ export const ROUTES = {
     CLASSES: (tenantSlug: string) => `/${tenantSlug}/classes`,
     SCHEDULE: (tenantSlug: string) => `/${tenantSlug}/schedule`,
     ATTENDANCE: (tenantSlug: string) => `/${tenantSlug}/attendance`,
+    MEMBERS: (tenantSlug: string) => `/${tenantSlug}/members`,
   },
   DASHBOARD: {
     OVERVIEW: "/dashboard",
@@ -45,6 +46,8 @@ export const ROUTES = {
         `/api/classes/${classId}/enrollments/${studentId}`,
     },
     MEMBERS: {
+      ROOT: "/api/members",
+      DETAIL: (id: string) => `/api/members/${id}`,
       TEACHERS: "/api/members/teachers",
       STUDENTS: "/api/members/students",
     },

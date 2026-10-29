@@ -8,4 +8,5 @@ export * from "./useSessionAttendance";
 export * from "./useCurrentRole";
 export * from "./useAuth";
 export * from "./useNotifications";
+export * from "./useMembers";
 

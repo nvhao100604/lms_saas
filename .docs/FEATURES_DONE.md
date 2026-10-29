@@ -8,7 +8,7 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 
 | Trạng thái | Số lượng | Tỷ lệ |
 | :--- | :--- | :--- |
-| **Đã hoàn thành (Done)** | 25 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components, Courses & Classes BFF API, MUI Enterprise SaaS Transformation, UI/UX Overhaul & Role-Based UI Rendering, Enrollments, Schedule & Attendance Management, Event-Driven Notification System với MassTransit & RabbitMQ) |
+| **Đã hoàn thành (Done)** | 26 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components, Courses & Classes BFF API, MUI Enterprise SaaS Transformation, UI/UX Overhaul & Role-Based UI Rendering, Enrollments, Schedule & Attendance Management, Event-Driven Notification System, Members & Student Management) |
 | **Đang tiến hành (In Progress)** | 0 | 0% |
 | **Kế hoạch sắp tới (Todo)** | 0 | - |
 
@@ -419,6 +419,40 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
     - `pnpm --dir client exec tsc --noEmit`: **0 lỗi TypeScript**.
     - `pnpm --dir client run build`: **15/15 routes static & dynamic (PPR) compile thành công**.
 * **Người thực hiện**: Senior Distributed Systems Architect & User.
+
+### [2026-10-29] Phân hệ Quản lý Nhân sự & Học viên Trung tâm (BFF .NET 10 & Client Next.js 16 MUI)
+* **Mô tả**: Mở rộng toàn diện `MembersController` ở tầng Backend BFF và xây dựng giao diện quản lý nhân sự & học viên hoàn chỉnh (`/[tenantSlug]/members`) ở tầng Frontend Client với Material UI, SWR, kiểm soát hạn ngạch gói cước, bảo vệ chống tự khóa tài khoản quản trị (Self-Lockout Prevention), và đồng bộ hóa đa ngôn ngữ (VI / EN).
+* **Kết quả**:
+  * **1. Backend .NET 10 BFF (Clean Architecture & CQS)**:
+    - [TenantMember.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/Entities/TenantMember.cs): Bổ sung thuộc tính `IsActive { get; set; } = true`.
+    - [SubscriptionPlan.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/Entities/SubscriptionPlan.cs): Bổ sung `MaxStudentsLimit { get; set; } = 100`, cập nhật `DbSeeder.cs` (FREE: 20 học viên, PRO: 100 học viên).
+    - CQS Models: [TenantMemberResponse.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Members/TenantMemberResponse.cs), [CreateTenantMemberRequest.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Members/CreateTenantMemberRequest.cs), [PatchTenantMemberRequest.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Members/PatchTenantMemberRequest.cs).
+    - [MembersController.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Api/Controllers/MembersController.cs):
+      + `GET /api/members/teachers` & `GET /api/members/students`: Lọc điều kiện `tm.IsActive == true` (Quy tắc 3).
+      + `GET /api/members?role=...&search=...`: Lấy danh sách thành viên hiện tại kèm tìm kiếm và lọc vai trò.
+      + `POST /api/members` (`[Authorize(Roles = "CenterAdmin")]`): Thực thi Quy tắc 1 — kiểm tra hạn ngạch học viên `MaxStudentsLimit` của gói cước, tìm hoặc tạo User (mật khẩu mặc định `Lms@123456` nếu để trống), chặn thêm trùng email trong cùng trung tâm, tạo `TenantMember` với `IsActive = true` trong Database Transaction.
+      + `PATCH /api/members/{memberId:guid}` (`[Authorize(Roles = "CenterAdmin")]`): Thực thi Quy tắc 2 — Self-Lockout Prevention chặn quản trị viên tự hạ quyền khỏi `CenterAdmin` hoặc tự tắt `IsActive = false` của chính mình.
+  * **2. Kiểm thử Tự động Backend**:
+    - [MembersControllerTests.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.UnitTests/Tests/MembersControllerTests.cs): Mở rộng bộ test với 6 bài test chuyên biệt (tạo thành viên thành công, chặn email trùng, chặn vượt trần học viên gói cước, chặn Self-Lockout quản trị viên, cập nhật thông tin thành viên khác, loại bỏ giảng viên/học viên đã bị khóa khỏi dropdown).
+    - `dotnet build BFF/LmsSaaS.slnx`: **0 Warning, 0 Error**.
+    - `dotnet test BFF/LmsSaaS.slnx`: **61/61 tests passed 100%**.
+  * **3. Tầng Frontend (Next.js 16, MUI, SWR, i18n)**:
+    - [routes.ts](file:///d:/Project/SAAS/client/src/constants/routes.ts): Bổ sung `ROUTES.TENANT.MEMBERS` và `ROUTES.API.MEMBERS.ROOT`, `DETAIL`.
+    - [member.ts](file:///d:/Project/SAAS/client/src/types/member.ts) & [index.ts](file:///d:/Project/SAAS/client/src/types/index.ts): Khai báo đầy đủ types không dùng hậu tố `Dto`.
+    - [memberService.ts](file:///d:/Project/SAAS/client/src/services/memberService.ts): Bổ sung `getMembers`, `createMember`, `patchMember`.
+    - [useMembers.ts](file:///d:/Project/SAAS/client/src/hooks/useMembers.ts): SWR hook với caching, revalidateOnFocus và optimistic updates.
+    - [WorkspaceSidebar.tsx](file:///d:/Project/SAAS/client/src/components/layout/WorkspaceSidebar.tsx): Tích hợp menu "Thành viên" / "Members" (`PeopleAltOutlinedIcon`) cho CenterAdmin và Teacher.
+    - [MembersView.tsx](file:///d:/Project/SAAS/client/src/components/members/MembersView.tsx): 100% Material UI:
+      + 4 KPI Cards (Tổng thành viên, Ban quản trị, Giảng viên, Học viên).
+      + Thanh công cụ tìm kiếm họ tên/email, lọc vai trò, lọc trạng thái, nút "+ Thêm thành viên".
+      + Bảng danh sách thành viên với Avatar chữ cái đầu, cột Vai trò đổi nhanh qua `<Select>` cho Admin (hiển thị Chip tĩnh trên dòng chính mình), cột Trạng thái đổi nhanh qua `<Switch>` (disabled trên dòng chính mình).
+      + Hộp thoại `<Dialog>` thêm thành viên mới với trường Mật khẩu khởi tạo toggle ẩn/hiện và thông báo lỗi rõ ràng.
+      + Toast Snackbar thông báo kết quả tức thì.
+    - [locales/](file:///d:/Project/SAAS/client/src/locales/): Bổ sung từ điển song ngữ hoàn chỉnh trong `types.ts`, `vi.ts` và `en.ts`.
+    - [page.tsx](file:///d:/Project/SAAS/client/src/app/[tenantSlug]/members/page.tsx): Route `/[tenantSlug]/members` bọc `<Suspense>` chuẩn Next.js 16.
+    - `pnpm --dir client exec tsc --noEmit`: **0 lỗi TypeScript**.
+    - `pnpm --dir client run build`: **16/16 routes compile thành công**.
+* **Người thực hiện**: Senior Fullstack Architect & User.
 
 ---
 

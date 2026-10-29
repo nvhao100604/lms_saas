@@ -35,4 +35,5 @@ export * from "./auth";
 export * from "./course";
 export * from "./class";
 export * from "./notification";
+export * from "./member";
 
