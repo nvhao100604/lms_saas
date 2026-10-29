@@ -1,8 +1,10 @@
 using System;
 using System.Text;
 using LmsSaaS.Core.Common;
+using LmsSaaS.Infrastructure.Messaging.Consumers;
 using LmsSaaS.Infrastructure.Persistence;
 using LmsSaaS.Infrastructure.Services;
+using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -73,6 +75,41 @@ public static class DependencyInjection
         });
 
         services.AddAuthorization();
+
+        // 3. Cấu hình MassTransit với cơ chế Hybrid Transport (RabbitMQ vs. InMemory)
+        var useRabbitMq = configuration.GetValue<bool>("Messaging:UseRabbitMq");
+
+        services.AddMassTransit(x =>
+        {
+            x.AddConsumer<ClassCreatedNotificationConsumer>();
+            x.AddConsumer<StudentAbsentNotificationConsumer>();
+
+            if (useRabbitMq)
+            {
+                var rabbitHost = configuration["Messaging:RabbitMqHost"] ?? "localhost";
+                var rabbitUser = configuration["Messaging:RabbitMqUser"] ?? "guest";
+                var rabbitPass = configuration["Messaging:RabbitMqPassword"] ?? "guest";
+
+                x.UsingRabbitMq((context, cfg) =>
+                {
+                    cfg.Host(rabbitHost, "/", h =>
+                    {
+                        h.Username(rabbitUser);
+                        h.Password(rabbitPass);
+                    });
+
+                    cfg.UseMessageRetry(r => r.Interval(3, TimeSpan.FromSeconds(5)));
+                    cfg.ConfigureEndpoints(context);
+                });
+            }
+            else
+            {
+                x.UsingInMemory((context, cfg) =>
+                {
+                    cfg.ConfigureEndpoints(context);
+                });
+            }
+        });
 
         return services;
     }

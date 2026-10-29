@@ -41,6 +41,7 @@ public class AppDbContext : DbContext
     public DbSet<Quiz> Quizzes => Set<Quiz>();
     public DbSet<QuizSubmission> QuizSubmissions => Set<QuizSubmission>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -292,6 +293,31 @@ public class AppDbContext : DbContext
             entity.HasOne(rt => rt.User)
                 .WithMany(u => u.RefreshTokens)
                 .HasForeignKey(rt => rt.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        // 13. Notification (ITenantEntity)
+        modelBuilder.Entity<Notification>(entity =>
+        {
+            entity.ToTable("notifications");
+            entity.HasKey(n => n.Id);
+            entity.Property(n => n.Title).IsRequired().HasMaxLength(255);
+            entity.Property(n => n.Message).IsRequired().HasMaxLength(2000);
+            entity.Property(n => n.ActionUrl).HasMaxLength(500);
+
+            entity.Property(n => n.Type)
+                .HasConversion<int>()
+                .IsRequired();
+
+            entity.HasIndex(n => new { n.TenantId, n.RecipientUserId, n.IsRead, n.CreatedAt });
+
+            entity.HasOne(n => n.Tenant)
+                .WithMany()
+                .HasForeignKey(n => n.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(n => n.RecipientUser)
+                .WithMany(u => u.Notifications)
+                .HasForeignKey(n => n.RecipientUserId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

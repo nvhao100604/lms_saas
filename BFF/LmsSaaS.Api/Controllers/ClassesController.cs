@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using LmsSaaS.Core.Common;
+using LmsSaaS.Core.Events;
+using MassTransit;
 using LmsSaaS.Core.DTOs.Classes;
 using LmsSaaS.Core.Entities;
 using LmsSaaS.Core.Enums;
@@ -20,7 +22,8 @@ namespace LmsSaaS.Api.Controllers;
 public class ClassesController(
     AppDbContext dbContext,
     IScheduleGeneratorService scheduleGenerator,
-    ICurrentTenantService currentTenantService) : ControllerBase
+    ICurrentTenantService currentTenantService,
+    IPublishEndpoint publishEndpoint) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -277,6 +280,18 @@ public class ClassesController(
             await dbContext.SaveChangesAsync();
 
             await transaction.CommitAsync();
+
+            var tenantSlug = currentTenantService.TenantSlug ?? tenant?.Slug ?? string.Empty;
+            await publishEndpoint.Publish(new ClassCreatedIntegrationEvent(
+                tenantId.Value,
+                tenantSlug,
+                @class.Id,
+                @class.Name,
+                course.Title,
+                teacher.Id,
+                @class.StartDate,
+                sessions.Count
+            ));
 
             var sessionResponses = sessions
                 .OrderBy(s => s.SessionNumber)

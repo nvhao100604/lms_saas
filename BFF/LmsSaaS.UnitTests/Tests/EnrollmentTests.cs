@@ -30,7 +30,8 @@ public class EnrollmentTests
         var context = new AppDbContext(options, tenantService);
 
         var scheduleGenerator = new ScheduleGeneratorService();
-        var controller = new ClassesController(context, scheduleGenerator, tenantService);
+        var publishEndpoint = new Mocks.TestPublishEndpoint();
+        var controller = new ClassesController(context, scheduleGenerator, tenantService, publishEndpoint);
 
         return (context, controller, tenantId);
     }
