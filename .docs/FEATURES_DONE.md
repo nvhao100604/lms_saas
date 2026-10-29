@@ -8,7 +8,7 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 
 | Trạng thái | Số lượng | Tỷ lệ |
 | :--- | :--- | :--- |
-| **Đã hoàn thành (Done)** | 24 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components, Courses & Classes BFF API, MUI Enterprise SaaS Transformation, UI/UX Overhaul & Role-Based UI Rendering, Enrollments, Schedule & Attendance Management) |
+| **Đã hoàn thành (Done)** | 25 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components, Courses & Classes BFF API, MUI Enterprise SaaS Transformation, UI/UX Overhaul & Role-Based UI Rendering, Enrollments, Schedule & Attendance Management, Event-Driven Notification System với MassTransit & RabbitMQ) |
 | **Đang tiến hành (In Progress)** | 0 | 0% |
 | **Kế hoạch sắp tới (Todo)** | 0 | - |
 
@@ -379,6 +379,46 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
     - Backend: `dotnet test BFF/LmsSaaS.slnx` đạt **50/50 tests passed 100%**.
     - Frontend: `pnpm --dir client exec tsc --noEmit` đạt **0 lỗi TypeScript**; `pnpm --dir client run build` hoàn thành xuất sắc **15/15 routes static & dynamic (PPR)**.
 * **Người thực hiện**: AI Agent & User.
+
+---
+
+### [2026-10-29] Triển khai Hệ thống Thông báo Hướng sự kiện (Event-Driven Notification System với .NET 10 MassTransit, RabbitMQ Hybrid Transport & Next.js 16 Material UI NotificationBell)
+* **Mô tả**: Tích hợp hoàn chỉnh hệ thống thông báo phân tán bất đồng bộ kết nối từ .NET 10 BFF (sử dụng MassTransit 8, RabbitMQ Message Broker với cơ chế Hybrid Transport In-Memory fallback, khôi phục ngữ cảnh Tenant trong Background Consumer) lên thanh `WorkspaceHeader` của Next.js 16 Client bằng Material UI Native Popover.
+* **Kết quả**:
+  * **1. Hạ tầng Docker & Cấu hình Hybrid Transport**:
+    - [docker-compose.yml](file:///d:/Project/SAAS/docker-compose.yml): Bổ sung service `lms-rabbitmq` (`rabbitmq:4-management-alpine`, container `lms-saas-rabbitmq`, ports `5672:5672` và `15672:15672`), cấu hình healthcheck tự động với `rabbitmq-diagnostics -q ping`.
+    - Cấu hình `lms-bff` phụ thuộc `lms-rabbitmq` (`condition: service_healthy`) và nạp biến môi trường `Messaging__*`.
+    - [.env](file:///d:/Project/SAAS/.env) & [.env.example](file:///d:/Project/SAAS/.env.example): Bổ sung thông tin xác thực `RABBITMQ_USER=guest`, `RABBITMQ_PASS=guest`.
+    - [BFF/LmsSaaS.Infrastructure/DependencyInjection.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Infrastructure/DependencyInjection.cs): Triển khai cơ chế Hybrid Transport dựa trên biến `Messaging:UseRabbitMq`: khi `true` tự động kết nối RabbitMQ với retry policy (3 lần, mỗi lần cách 5 giây); khi `false` tự động dùng `UsingInMemory` giúp developer chạy local và unit test mà không bắt buộc bật Docker container.
+  * **2. Tầng Core & Data Layer (.NET 10 BFF)**:
+    - [BFF/LmsSaaS.Core/Enums/NotificationType.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/Enums/NotificationType.cs): `ClassAssigned = 1`, `AttendanceAbsent = 2`, `SystemAlert = 3`.
+    - [BFF/LmsSaaS.Core/Entities/Notification.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/Entities/Notification.cs): Thực thể kế thừa `ITenantEntity` gồm `Id`, `TenantId`, `RecipientUserId`, `Title`, `Message`, `Type`, `ActionUrl`, `IsRead`, `CreatedAt`.
+    - [BFF/LmsSaaS.Infrastructure/Persistence/AppDbContext.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Infrastructure/Persistence/AppDbContext.cs): Đăng ký `DbSet<Notification>`, cấu hình bảng `notifications`, composite index `(TenantId, RecipientUserId, IsRead, CreatedAt)`, quan hệ Cascade với Tenant và Restrict với RecipientUser, tự động áp dụng Global Query Filter qua Reflection.
+  * **3. Sự kiện Tích hợp, DTOs & MassTransit Consumers**:
+    - [BFF/LmsSaaS.Core/Events/ClassCreatedIntegrationEvent.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/Events/ClassCreatedIntegrationEvent.cs) và [StudentAbsentIntegrationEvent.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/Events/StudentAbsentIntegrationEvent.cs).
+    - CQS DTOs không hậu tố `Dto`: [NotificationResponse.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Notifications/NotificationResponse.cs) và [NotificationSummaryResponse.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Notifications/NotificationSummaryResponse.cs).
+    - [ClassCreatedNotificationConsumer.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Infrastructure/Messaging/Consumers/ClassCreatedNotificationConsumer.cs): Khôi phục ngữ cảnh Tenant `ICurrentTenantService.SetTenantContext(msg.TenantId, msg.TenantSlug)`, tạo thông báo phân công giảng dạy cho Giảng viên (`RecipientUserId = msg.TeacherId`), link hành động `/{TenantSlug}/classes`.
+    - [StudentAbsentNotificationConsumer.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Infrastructure/Messaging/Consumers/StudentAbsentNotificationConsumer.cs): Khôi phục ngữ cảnh Tenant, tạo thông báo cảnh báo vắng mặt cho Học viên (`RecipientUserId = msg.StudentId`), link hành động `/{TenantSlug}/schedule`.
+  * **4. Publisher & Controller API**:
+    - [ClassesController.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Api/Controllers/ClassesController.cs): Inject `IPublishEndpoint`, bắn sự kiện `ClassCreatedIntegrationEvent` ngay sau khi `await transaction.CommitAsync()`.
+    - [NotificationsController.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Api/Controllers/NotificationsController.cs): `[Authorize]`, `GET /api/notifications` (lấy 20 thông báo mới nhất kèm `UnreadCount`), `PATCH /api/notifications/{id}/read` (đánh dấu 1 thông báo đã đọc), `PATCH /api/notifications/read-all` (đánh dấu tất cả thông báo của người dùng đã đọc).
+  * **5. Tầng Client (Next.js 16 & Material UI)**:
+    - [next.config.ts](file:///d:/Project/SAAS/client/next.config.ts): Bổ sung rewrite rule `/api/notifications/:path*` sang BFF URL.
+    - [routes.ts](file:///d:/Project/SAAS/client/src/constants/routes.ts): Bổ sung hằng số `ROUTES.API.NOTIFICATIONS`.
+    - [notification.ts](file:///d:/Project/SAAS/client/src/types/notification.ts) & [index.ts](file:///d:/Project/SAAS/client/src/types/index.ts): Định nghĩa kiểu dữ liệu TypeScript đồng bộ.
+    - [notificationService.ts](file:///d:/Project/SAAS/client/src/services/notificationService.ts): Service gọi API không dùng try-catch thủ công, tận dụng Axios Interceptors.
+    - [useNotifications.ts](file:///d:/Project/SAAS/client/src/hooks/useNotifications.ts): SWR polling 15s (`refreshInterval: 15000`, `revalidateOnFocus: true`), hỗ trợ cập nhật lạc quan (optimistic mutation) cho `markAsRead` và `markAllAsRead`.
+    - [NotificationBell.tsx](file:///d:/Project/SAAS/client/src/components/layout/NotificationBell.tsx): 100% MUI (`IconButton`, `Badge` màu đỏ hiển thị số unread, `Popover` cuộn mượt mà, header với nút "Đánh dấu tất cả đã đọc", phân biệt thông báo chưa đọc với chấm xanh và nền sáng, định dạng thời gian tương đối hỗ trợ song ngữ (VI / EN), empty state, chuyển trang tới `actionUrl` khi click, zero technical jargon).
+    - [locales/](file:///d:/Project/SAAS/client/src/locales/): Bổ sung `NotificationTranslations` vào `types.ts`, `vi.ts` và `en.ts` hỗ trợ chuyển đổi ngôn ngữ mượt mà theo Redux `languageSlice`.
+    - [WorkspaceHeader.tsx](file:///d:/Project/SAAS/client/src/components/layout/WorkspaceHeader.tsx): Nhúng `NotificationBell` vào cụm điều hướng người dùng cạnh `LanguageSwitcher`.
+  * **6. Kiểm thử tự động & Xác minh chất lượng**:
+    - [NotificationSystemTests.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.UnitTests/Tests/NotificationSystemTests.cs): 5 bài test chuyên biệt kiểm tra Consumer khôi phục đúng tenant, lưu đúng người nhận, NotificationsController cách ly tuyệt đối dữ liệu giữa các User và giữa các Tenant, kiểm tra tính năng đánh dấu đã đọc.
+    - Cập nhật [EnrollmentTests.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.UnitTests/Tests/EnrollmentTests.cs) tích hợp `TestPublishEndpoint`.
+    - `dotnet build BFF/LmsSaaS.slnx`: **0 Warning, 0 Error**.
+    - `dotnet test BFF/LmsSaaS.slnx`: **55/55 tests passed 100%**.
+    - `pnpm --dir client exec tsc --noEmit`: **0 lỗi TypeScript**.
+    - `pnpm --dir client run build`: **15/15 routes static & dynamic (PPR) compile thành công**.
+* **Người thực hiện**: Senior Distributed Systems Architect & User.
 
 ---
 

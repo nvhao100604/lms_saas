@@ -54,5 +54,10 @@ export const ROUTES = {
     SESSIONS: {
       ATTENDANCES: (sessionId: string) => `/api/sessions/${sessionId}/attendances`,
     },
+    NOTIFICATIONS: {
+      ROOT: "/api/notifications",
+      MARK_READ: (id: string) => `/api/notifications/${id}/read`,
+      MARK_ALL_READ: "/api/notifications/read-all",
+    },
   },
 } as const;

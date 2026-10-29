@@ -999,6 +999,68 @@ Tài liệu này ghi lại toàn bộ lịch sử các phiên làm việc, nhữ
 * **Kiến trúc State Phía Client Tránh Cascading Renders**:
   - Tách `AttendanceSheetDetail` với `key={selectedSessionId}` cho phép React tự động unmount và mount lại component con khi đổi buổi học, khởi tạo local state một lần duy nhất lúc mount thay vì gọi `setState` đồng bộ bên trong `useEffect`, giúp loại bỏ hoàn toàn cảnh báo `react-hooks/set-state-in-effect` của React 19 Compiler.
 
+---
+
+## [2026-10-29] Triển khai Hệ thống Thông báo Hướng sự kiện (Event-Driven Notification System)
+
+### Mục tiêu trong phiên làm việc
+* Tích hợp toàn diện kiến trúc sự kiện phân tán từ .NET 10 BFF đến giao diện người dùng Next.js 16 Material UI:
+  1. **Hạ tầng Message Broker**: Cấu hình container RabbitMQ 4 Management Alpine, tích hợp MassTransit với cơ chế Hybrid Transport linh hoạt (chạy RabbitMQ khi cấu hình `Messaging:UseRabbitMq = true` và tự động dùng In-Memory Bus khi `false`).
+  2. **Multi-Tenant Context Restoration**: Đảm bảo an toàn đa khách thuê khi Consumer chạy trên Background Worker Thread không đi qua `TenantResolutionMiddleware` của HTTP pipeline.
+  3. **Event Contracts & Publishers**: Tích hợp sự kiện `ClassCreatedIntegrationEvent` và `StudentAbsentIntegrationEvent`, kích hoạt bắn sự kiện từ `ClassesController` sau khi commit transaction.
+  4. **Notifications API & Storage**: Cấu hình bảng `notifications` trong `AppDbContext` với composite index `(TenantId, RecipientUserId, IsRead, CreatedAt)`, xây dựng `NotificationsController` lấy danh sách thông báo và đánh dấu đã đọc.
+  5. **Client NotificationBell**: Xây dựng 100% bằng Material UI v9, chuông thông báo có Badge số lượng chưa đọc, Popover thân thiện, phân biệt trạng thái đọc/chưa đọc, định dạng thời gian tiếng Việt, zero technical jargon.
+* Đạt 100% tiêu chuẩn chất lượng: 0 Warning, 0 Error, 100% tests passed trên cả Backend và Frontend.
+
+### Các công việc đã thực hiện
+1. **Khởi tạo & Lập kế hoạch**:
+   - Sử dụng kỹ năng `brainstorming` phân tích bối cảnh, xác định phân loại nhiệm vụ là **Architectural**, làm rõ phạm vi sự kiện với người dùng.
+   - Biên soạn tài liệu đặc tả kiến trúc `docs/superpowers/specs/2026-10-29-event-driven-notifications-design.md`.
+   - Sử dụng kỹ năng `writing-plans` lập kế hoạch 8 tasks chi tiết tại `docs/superpowers/plans/2026-10-29-event-driven-notifications.md`.
+2. **Cấu hình Hạ tầng Docker & Biến môi trường**:
+   - `docker-compose.yml`: Bổ sung service `lms-rabbitmq` (`rabbitmq:4-management-alpine`), ports `5672:5672` và `15672:15672`, healthcheck `rabbitmq-diagnostics -q ping`.
+   - Cấu hình `lms-bff` có `depends_on: lms-rabbitmq (condition: service_healthy)` và các biến môi trường `Messaging__*`.
+   - Cập nhật `.env` và `.env.example` với `RABBITMQ_USER=guest`, `RABBITMQ_PASS=guest`.
+   - Xác minh hợp lệ qua `docker compose config`.
+3. **Triển khai Backend .NET 10 BFF (Clean Architecture & MassTransit)**:
+   - Cài đặt NuGet `MassTransit` và `MassTransit.RabbitMQ` (v8.3.6) vào `LmsSaaS.Infrastructure.csproj`.
+   - Tạo enum `NotificationType` (`ClassAssigned`, `AttendanceAbsent`, `SystemAlert`).
+   - Tạo entity `Notification` kế thừa `ITenantEntity`.
+   - `AppDbContext.cs`: Đăng ký `DbSet<Notification>`, cấu hình bảng `notifications`, composite index `(TenantId, RecipientUserId, IsRead, CreatedAt)`, Global Query Filter tự động qua reflection.
+   - Tạo Event Contracts: `ClassCreatedIntegrationEvent.cs`, `StudentAbsentIntegrationEvent.cs`.
+   - Tạo CQS Models: `NotificationResponse.cs`, `NotificationSummaryResponse.cs`.
+   - Triển khai Consumers trong `BFF/LmsSaaS.Infrastructure/Messaging/Consumers/`:
+     + `ClassCreatedNotificationConsumer`: Khôi phục `currentTenantService.SetTenantContext(msg.TenantId, msg.TenantSlug)`, tạo thông báo phân công giảng dạy cho Giảng viên.
+     + `StudentAbsentNotificationConsumer`: Khôi phục Tenant context, tạo thông báo cảnh báo vắng mặt cho Học viên.
+   - `DependencyInjection.cs`: Cấu hình MassTransit Hybrid Transport với retry policy 3 lần (mỗi lần cách 5 giây).
+   - `ClassesController.cs`: Inject `IPublishEndpoint`, bắn sự kiện sau `transaction.CommitAsync()`.
+   - `NotificationsController.cs`: Endpoints `GET /api/notifications`, `PATCH /api/notifications/{id}/read`, `PATCH /api/notifications/read-all`.
+4. **Kiểm thử Tự động Backend**:
+   - Tạo `TestPublishEndpoint` (mock `IPublishEndpoint`) và cập nhật `EnrollmentTests.cs`.
+   - Viết `NotificationSystemTests.cs` (5 tests):
+     + Consumer multi-tenant restoration & entity persistence.
+     + NotificationsController isolation giữa các user và giữa các tenant.
+     + Đánh dấu đã đọc đơn lẻ và hàng loạt.
+   - Kết quả: `dotnet test BFF/LmsSaaS.slnx` đạt **55/55 tests passed (100%)**, `dotnet build BFF/LmsSaaS.slnx` đạt **0 Warning, 0 Error**.
+5. **Triển khai Frontend Next.js 16 Client (Material UI)**:
+   - `next.config.ts`: Bổ sung rewrite rule `/api/notifications/:path*`.
+   - `routes.ts`: Bổ sung hằng số `ROUTES.API.NOTIFICATIONS`.
+   - Types: `client/src/types/notification.ts` và export trong `index.ts`.
+   - Service: `client/src/services/notificationService.ts` không try-catch thủ công.
+   - SWR Hook: `client/src/hooks/useNotifications.ts` (polling 15s, revalidateOnFocus, optimistic update).
+   - Component: `client/src/components/layout/NotificationBell.tsx` (100% MUI, badge đỏ, popover mượt mà, phân biệt trạng thái đọc/chưa đọc, định dạng thời gian tương đối hỗ trợ song ngữ Tiếng Việt & Tiếng Anh qua Redux `languageSlice`, empty state, zero jargon).
+   - Tích hợp từ điển đa ngữ: Bổ sung `NotificationTranslations` vào `locales/types.ts`, `locales/vi.ts` và `locales/en.ts`.
+   - `WorkspaceHeader.tsx`: Nhúng `NotificationBell` vào cụm điều hướng người dùng cạnh `LanguageSwitcher`.
+   - Kết quả: `pnpm --dir client exec tsc --noEmit` đạt **0 lỗi TypeScript**, `pnpm --dir client run build` thành công **15/15 routes static & dynamic (PPR)**.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Cơ chế Hybrid Transport trong MassTransit**:
+  - Việc đọc biến cấu hình `Messaging:UseRabbitMq` giúp phân tách rõ ràng giữa môi trường chạy thực tế (Docker Compose / Production cần Broker phân tán để scale nhiều replica) và môi trường phát triển cục bộ (`dotnet run` / `dotnet test`). Lập trình viên có thể code và chạy unit test tức thì ngay trên RAM mà không cần phải bật container RabbitMQ, tăng tốc độ phát triển.
+* **Khôi phục ngữ cảnh Tenant trong Background Consumer**:
+  - Do Consumer chạy trên Background Thread của MassTransit (không có HttpContext), `ICurrentTenantService` (Scoped Service) chưa có thông tin trung tâm. Việc gọi tường minh `currentTenantService.SetTenantContext(msg.TenantId, msg.TenantSlug)` ngay đầu hàm `Consume()` và gán tường minh `TenantId = msg.TenantId` trên entity trước khi `SaveChangesAsync()` đảm bảo dữ liệu luôn được ghi vào đúng Tenant, ngăn chặn hoàn toàn rủi ro rò rỉ dữ liệu chéo (cross-tenant leak).
+* **Giao diện Người dùng Thân thiện & Zero Technical Jargon**:
+  - Hệ thống thông báo là tính năng tương tác trực tiếp với giáo viên và học viên. Mọi thông tin hiển thị trên `NotificationBell` đều sử dụng ngôn ngữ tự nhiên, tiếng Việt chuẩn mực và tuyệt đối không để lộ bất kỳ thuật ngữ kỹ thuật nào của hạ tầng (như *RabbitMQ*, *MassTransit*, *Consumer*, *Queue*).
+
 
 
 

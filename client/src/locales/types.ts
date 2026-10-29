@@ -146,6 +146,20 @@ export interface SectionsTranslations {
   loadingCourses: string;
 }
 
+export interface NotificationTranslations {
+  title: string;
+  newBadge: string;
+  markAllAsRead: string;
+  emptyTitle: string;
+  emptyDesc: string;
+  ariaLabel: string;
+  justNow: string;
+  minutesAgo: string;
+  hoursAgo: string;
+  yesterday: string;
+  daysAgo: string;
+}
+
 export interface Translations {
   common: CommonTranslations;
   auth: AuthTranslations;
@@ -155,4 +169,5 @@ export interface Translations {
   home: HomeTranslations;
   navigation: NavigationTranslations;
   sections: SectionsTranslations;
+  notifications: NotificationTranslations;
 }

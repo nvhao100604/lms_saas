@@ -140,4 +140,17 @@ export const enTranslations: Translations = {
     loadingAttendance: "Loading attendance module...",
     loadingCourses: "Loading courses list...",
   },
+  notifications: {
+    title: "Notifications",
+    newBadge: "new",
+    markAllAsRead: "Mark all as read",
+    emptyTitle: "No new notifications",
+    emptyDesc: "You have caught up with all class and schedule updates.",
+    ariaLabel: "Notifications",
+    justNow: "Just now",
+    minutesAgo: "minutes ago",
+    hoursAgo: "hours ago",
+    yesterday: "Yesterday",
+    daysAgo: "days ago",
+  },
 };

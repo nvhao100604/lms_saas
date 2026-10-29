@@ -140,4 +140,17 @@ export const viTranslations: Translations = {
     loadingAttendance: "Đang tải phân hệ điểm danh...",
     loadingCourses: "Đang tải danh sách khóa học...",
   },
+  notifications: {
+    title: "Thông báo",
+    newBadge: "mới",
+    markAllAsRead: "Đánh dấu tất cả đã đọc",
+    emptyTitle: "Không có thông báo mới",
+    emptyDesc: "Bạn đã cập nhật hết tất cả thông báo về lớp học và lịch học.",
+    ariaLabel: "Thông báo",
+    justNow: "Vừa xong",
+    minutesAgo: "phút trước",
+    hoursAgo: "giờ trước",
+    yesterday: "Hôm qua",
+    daysAgo: "ngày trước",
+  },
 };

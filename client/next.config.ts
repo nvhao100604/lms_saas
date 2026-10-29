@@ -58,6 +58,10 @@ const nextConfig: NextConfig = {
         source: "/api/sessions/:path*",
         destination: `${backendUrl}/api/sessions/:path*`,
       },
+      {
+        source: "/api/notifications/:path*",
+        destination: `${backendUrl}/api/notifications/:path*`,
+      },
     ];
   },
 };

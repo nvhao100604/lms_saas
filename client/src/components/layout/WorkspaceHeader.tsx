@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ROUTES } from "@/constants/routes";
 import { useAppSelector } from "@/store/hooks";
 import { LanguageSwitcher } from "@/components/common";
+import { NotificationBell } from "./NotificationBell";
 import { authService } from "@/services/authService";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
 import {
@@ -36,6 +37,8 @@ export function WorkspaceHeader({
 }: WorkspaceHeaderProps) {
   const router = useRouter();
   const t = useAppSelector((state) => state.language.t);
+  const currentLanguage = useAppSelector((state) => state.language.currentLanguage);
+  const rolePrefix = currentLanguage === "en" ? "Role: " : "Vai trò: ";
   const { roleDisplayName, isCenterAdmin, isTeacher, user } = useCurrentRole();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -146,7 +149,7 @@ export function WorkspaceHeader({
         {/* Right: Role Badge, Language, Switch Workspace, Logout */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
           {/* User Role Badge */}
-          <Tooltip title={`Vai trò: ${roleDisplayName}${user?.email ? ` • ${user.email}` : ""}`}>
+          <Tooltip title={`${rolePrefix}${roleDisplayName}${user?.email ? ` • ${user.email}` : ""}`}>
             <Chip
               icon={<AccountCircleRoundedIcon sx={{ fontSize: "16px !important" }} />}
               label={roleDisplayName}
@@ -171,6 +174,7 @@ export function WorkspaceHeader({
             />
           </Tooltip>
 
+          <NotificationBell tenantSlug={tenantSlug} />
           <LanguageSwitcher />
 
           <Tooltip title={t.navigation.switchWorkspace}>
