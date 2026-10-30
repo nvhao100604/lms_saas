@@ -83,6 +83,38 @@ export interface DashboardTranslations {
   sessionHttpOnlyPrefix: string;
   sessionActive: string;
   sessionProtected: string;
+  kpiActiveCourses: string;
+  kpiActiveCoursesSub: string;
+  kpiOngoingClasses: string;
+  kpiOngoingClassesSub: string;
+  kpiTotalMembers: string;
+  kpiTotalMembersSub: string;
+  kpiAttendanceRate: string;
+  kpiAttendanceRateSub: string;
+  quotaCardTitle: string;
+  quotaCardDesc: string;
+  quotaClassesLabel: string;
+  quotaStudentsLabel: string;
+  quotaWarningLevel: string;
+  quotaCriticalLevel: string;
+  quotaUpgradeAction: string;
+  todaySessionsTitle: string;
+  todaySessionsDesc: string;
+  todaySessionsBadge: string;
+  upcomingSessionsBadge: string;
+  sessionNumberPrefix: string;
+  roomPrefix: string;
+  teacherPrefix: string;
+  topicPrefix: string;
+  takeAttendanceAction: string;
+  viewScheduleAction: string;
+  noSessionsFound: string;
+  noSessionsDesc: string;
+  quickActionsTitle: string;
+  quickManageClasses: string;
+  quickManageMembers: string;
+  quickViewSchedule: string;
+  currencyVndSuffix: string;
 }
 
 export interface CoursesTranslations {

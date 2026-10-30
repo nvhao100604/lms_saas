@@ -1,18 +1,47 @@
 "use client";
 
 import Link from "next/link";
+import {
+  Box,
+  Typography,
+  Paper,
+  Button,
+  IconButton,
+  Chip,
+  LinearProgress,
+  Skeleton,
+  Alert,
+  Tooltip,
+} from "@mui/material";
+import MenuBookRoundedIcon from "@mui/icons-material/MenuBookRounded";
+import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
+import SchoolRoundedIcon from "@mui/icons-material/SchoolRounded";
+import FactCheckRoundedIcon from "@mui/icons-material/FactCheckRounded";
+import CalendarMonthRoundedIcon from "@mui/icons-material/CalendarMonthRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import PeopleAltRoundedIcon from "@mui/icons-material/PeopleAltRounded";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
+import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRounded";
+import RoomRoundedIcon from "@mui/icons-material/RoomRounded";
+import AccessTimeRoundedIcon from "@mui/icons-material/AccessTimeRounded";
+import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
+
 import { ROUTES } from "@/constants/routes";
 import { useAppSelector } from "@/store/hooks";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
+import { useDashboard } from "@/hooks/useDashboard";
 
-interface DashboardViewProps {
+export interface DashboardViewProps {
   tenantSlug: string;
   hasToken: boolean;
 }
 
 export function DashboardView({ tenantSlug }: DashboardViewProps) {
   const t = useAppSelector((state) => state.language.t);
-  const { isCenterAdmin } = useCurrentRole();
+  const { isCenterAdmin, isTeacher } = useCurrentRole();
+  const { dashboard, isLoading, isError, error, isValidating, mutate } =
+    useDashboard(tenantSlug);
 
   // Format tenant display name from slug (e.g. "trung-tam-anh-ngu" -> "Trung Tam Anh Ngu")
   const formattedTenantTitle = tenantSlug
@@ -20,258 +49,809 @@ export function DashboardView({ tenantSlug }: DashboardViewProps) {
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 
+  // Quota percentage calculations
+  const classUsagePercent = dashboard?.quota.maxClassesLimit
+    ? Math.min(
+        Math.round(
+          (dashboard.quota.currentClassesCount /
+            dashboard.quota.maxClassesLimit) *
+            100
+        ),
+        100
+      )
+    : 0;
+
+  const studentUsagePercent = dashboard?.quota.maxStudentsLimit
+    ? Math.min(
+        Math.round(
+          (dashboard.quota.currentStudentsCount /
+            dashboard.quota.maxStudentsLimit) *
+            100
+        ),
+        100
+      )
+    : 0;
+
+  const getQuotaColor = (percent: number): "primary" | "warning" | "error" => {
+    if (percent > 85) return "error";
+    if (percent > 70) return "warning";
+    return "primary";
+  };
+
+  // Format session time
+  const formatTimeSlot = (startTime: string, endTime: string) => {
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    const startStr = start.toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const endStr = end.toLocaleTimeString("vi-VN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    return `${startStr} - ${endStr}`;
+  };
+
+  const isTodaySession = (startTime: string) => {
+    const sessionDate = new Date(startTime).toDateString();
+    const today = new Date().toDateString();
+    return sessionDate === today;
+  };
+
+  const hasAnyTodaySessions =
+    dashboard?.todaySessions && dashboard.todaySessions.length > 0
+      ? isTodaySession(dashboard.todaySessions[0].startTime)
+      : false;
+
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Welcome Hero Banner */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 p-6 sm:p-10 text-white shadow-xl shadow-indigo-950/20">
-          {/* Decorative shapes */}
-          <div className="absolute -right-10 -bottom-10 h-64 w-64 rounded-full bg-indigo-500/20 blur-3xl" />
-          <div className="absolute right-40 top-0 h-40 w-40 rounded-full bg-purple-500/20 blur-2xl" />
+    <Box sx={{ p: { xs: 2, sm: 3, md: 4 }, display: "flex", flexDirection: "column", gap: 3.5, maxWidth: 1400, mx: "auto" }}>
+      {/* 1. Hero Welcome Banner */}
+      <Paper
+        elevation={0}
+        sx={{
+          position: "relative",
+          overflow: "hidden",
+          borderRadius: 3,
+          p: { xs: 3, sm: 4 },
+          background: "linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #0f172a 100%)",
+          color: "white",
+          boxShadow: "0 10px 25px -5px rgba(30, 27, 75, 0.25)",
+        }}
+      >
+        <Box sx={{ position: "relative", zIndex: 1, maxWidth: 750 }}>
+          <Box
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 1,
+              bgcolor: "rgba(255, 255, 255, 0.12)",
+              backdropFilter: "blur(10px)",
+              px: 1.5,
+              py: 0.5,
+              borderRadius: 99,
+              mb: 2,
+              border: "1px solid rgba(255, 255, 255, 0.15)",
+            }}
+          >
+            <WorkspacePremiumRoundedIcon sx={{ fontSize: 16, color: "#a5b4fc" }} />
+            <Typography variant="caption" sx={{ color: "#e0e7ff", fontWeight: 600 }}>
+              {t.dashboard.currentSpaceBadge}
+            </Typography>
+          </Box>
 
-          <div className="relative z-10 max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-indigo-200 backdrop-blur-md mb-4 border border-white/10">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                />
-              </svg>
-              <span>{t.dashboard.currentSpaceBadge}</span>
-            </div>
+          <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: "-0.02em", mb: 1.5 }}>
+            {t.dashboard.welcomePrefix}{" "}
+            <Box component="span" sx={{ color: "#a5b4fc" }}>
+              {formattedTenantTitle}
+            </Box>
+          </Typography>
 
-            <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight">
-              {t.dashboard.welcomePrefix}{" "}
-              <span className="text-indigo-300">{formattedTenantTitle}</span>
-            </h1>
+          <Typography variant="body1" sx={{ color: "rgba(224, 231, 255, 0.9)", lineHeight: 1.6, mb: 3 }}>
+            {t.dashboard.workingInSpace}{" "}
+            <Box
+              component="span"
+              sx={{
+                bgcolor: "rgba(255, 255, 255, 0.15)",
+                px: 1,
+                py: 0.25,
+                borderRadius: 1,
+                fontWeight: 600,
+                color: "#ffffff",
+              }}
+            >
+              {formattedTenantTitle}
+            </Box>
+            . {t.dashboard.bffSecurityDesc}
+          </Typography>
 
-            <p className="mt-3 text-sm sm:text-base text-indigo-100/90 leading-relaxed">
-              {t.dashboard.workingInSpace}{" "}
-              <span className="rounded bg-white/15 px-2 py-0.5 font-semibold text-white">
-                {formattedTenantTitle}
-              </span>
-              . Theo dõi tiến độ đào tạo, quản lý lớp học và kết quả học tập tại trung tâm.
-            </p>
-
-            <div className="mt-6 flex flex-wrap gap-3">
-              {isCenterAdmin ? (
-                <>
-                  <Link
-                    href={ROUTES.TENANT.COURSES(tenantSlug)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-indigo-900 shadow-sm transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 4v16m8-8H4"
-                      />
-                    </svg>
-                    <span>{t.dashboard.createNewCourse}</span>
-                  </Link>
-                  <Link
-                    href={ROUTES.TENANT.CLASSES(tenantSlug)}
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                      />
-                    </svg>
-                    <span>Quản lý Lớp học</span>
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <Link
-                    href={ROUTES.TENANT.COURSES(tenantSlug)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-indigo-900 shadow-sm transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                      />
-                    </svg>
-                    <span>Xem Khóa học</span>
-                  </Link>
-                  <Link
-                    href={ROUTES.TENANT.SCHEDULE(tenantSlug)}
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                      />
-                    </svg>
-                    <span>Lịch giảng dạy & Buổi học</span>
-                  </Link>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Stats Grid */}
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {/* Card 1: Khóa học */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 transition-all hover:shadow-md">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                {t.dashboard.statsTotalCourses}
-              </span>
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.8}
-                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
-                  />
-                </svg>
-              </div>
-            </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-slate-900 dark:text-white">24</span>
-              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                {t.dashboard.statsThisMonth}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {t.dashboard.statsTotalCoursesSub}
-            </p>
-          </div>
-
-          {/* Card 2: Học viên */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 transition-all hover:shadow-md">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                {t.dashboard.statsActiveStudents}
-              </span>
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.8}
-                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                  />
-                </svg>
-              </div>
-            </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-slate-900 dark:text-white">1,420</span>
-              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                {t.dashboard.statsGrowth}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {t.dashboard.statsActiveStudentsSub}
-            </p>
-          </div>
-
-          {/* Card 3: Giảng viên */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 transition-all hover:shadow-md">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                {t.dashboard.statsInstructors}
-              </span>
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.8}
-                    d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 100-6 3 3 0 000 6z"
-                  />
-                </svg>
-              </div>
-            </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-slate-900 dark:text-white">18</span>
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                4 {t.dashboard.statsOnline}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {t.dashboard.statsInstructorsSub}
-            </p>
-          </div>
-
-          {/* Card 4: Hoàn thành khóa học */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 transition-all hover:shadow-md">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                {t.dashboard.statsCompletionRate}
-              </span>
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.8}
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-            </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-slate-900 dark:text-white">88.4%</span>
-              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                {t.dashboard.statsThisWeek}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {t.dashboard.statsCompletionRateSub}
-            </p>
-          </div>
-        </div>
-
-        {/* Workspace Quick Links & Info Card */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                  {t.common.securityBadge}
-                </h4>
-                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                  {t.common.securityDesc}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Link
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5 }}>
+            {isCenterAdmin ? (
+              <>
+                <Button
+                  component={Link}
+                  href={ROUTES.TENANT.COURSES(tenantSlug)}
+                  variant="contained"
+                  startIcon={<AddRoundedIcon />}
+                  sx={{
+                    bgcolor: "#ffffff",
+                    color: "#1e1b4b",
+                    fontWeight: 700,
+                    textTransform: "none",
+                    borderRadius: 2,
+                    px: 2.5,
+                    "&:hover": { bgcolor: "#f5f3ff" },
+                  }}
+                >
+                  {t.dashboard.createNewCourse}
+                </Button>
+                <Button
+                  component={Link}
+                  href={ROUTES.TENANT.CLASSES(tenantSlug)}
+                  variant="outlined"
+                  startIcon={<GroupsRoundedIcon />}
+                  sx={{
+                    borderColor: "rgba(255, 255, 255, 0.3)",
+                    color: "#ffffff",
+                    fontWeight: 600,
+                    textTransform: "none",
+                    borderRadius: 2,
+                    px: 2.5,
+                    backdropFilter: "blur(4px)",
+                    "&:hover": {
+                      borderColor: "#ffffff",
+                      bgcolor: "rgba(255, 255, 255, 0.1)",
+                    },
+                  }}
+                >
+                  {t.dashboard.quickManageClasses}
+                </Button>
+              </>
+            ) : (
+              <Button
+                component={Link}
                 href={ROUTES.TENANT.SCHEDULE(tenantSlug)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 transition-colors"
+                variant="contained"
+                startIcon={<CalendarMonthRoundedIcon />}
+                sx={{
+                  bgcolor: "#ffffff",
+                  color: "#1e1b4b",
+                  fontWeight: 700,
+                  textTransform: "none",
+                  borderRadius: 2,
+                  px: 2.5,
+                  "&:hover": { bgcolor: "#f5f3ff" },
+                }}
               >
-                <span>Xem thời khóa biểu</span>
-                <span>&rarr;</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-    </div>
+                {t.dashboard.viewScheduleAction}
+              </Button>
+            )}
+
+            <Tooltip title={t.courses.refreshSwr}>
+              <span>
+                <IconButton
+                  onClick={() => mutate()}
+                  disabled={isValidating}
+                  sx={{
+                    color: "#ffffff",
+                    border: "1px solid rgba(255, 255, 255, 0.2)",
+                    borderRadius: 2,
+                    "&:hover": { bgcolor: "rgba(255, 255, 255, 0.1)" },
+                  }}
+                >
+                  <RefreshRoundedIcon
+                    fontSize="small"
+                    sx={{
+                      animation: isValidating ? "spin 1s linear infinite" : "none",
+                      "@keyframes spin": {
+                        "0%": { transform: "rotate(0deg)" },
+                        "100%": { transform: "rotate(360deg)" },
+                      },
+                    }}
+                  />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Box>
+        </Box>
+      </Paper>
+
+      {/* Error state */}
+      {isError && (
+        <Alert severity="error" sx={{ borderRadius: 2 }}>
+          {error?.message || t.courses.defaultErrorMessage}
+        </Alert>
+      )}
+
+      {/* 2. 4 Top KPI Cards */}
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: {
+            xs: "1fr",
+            sm: "1fr 1fr",
+            lg: "repeat(4, 1fr)",
+          },
+          gap: 2.5,
+        }}
+      >
+        {/* KPI 1: Active Courses */}
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2.5,
+            borderRadius: 2.5,
+            bgcolor: "background.paper",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Box>
+            <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 600 }}>
+              {t.dashboard.kpiActiveCourses}
+            </Typography>
+            <Typography variant="h4" sx={{ fontWeight: 800, mt: 0.5, color: "text.primary" }}>
+              {isLoading ? <Skeleton width={40} /> : dashboard?.totalActiveCourses ?? 0}
+            </Typography>
+            <Typography variant="caption" sx={{ color: "text.secondary", mt: 0.5, display: "block" }}>
+              {t.dashboard.kpiActiveCoursesSub}
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              width: 50,
+              height: 50,
+              borderRadius: 2,
+              bgcolor: "primary.50",
+              color: "primary.main",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <MenuBookRoundedIcon fontSize="medium" />
+          </Box>
+        </Paper>
+
+        {/* KPI 2: Ongoing Classes */}
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2.5,
+            borderRadius: 2.5,
+            bgcolor: "background.paper",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Box>
+            <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 600 }}>
+              {t.dashboard.kpiOngoingClasses}
+            </Typography>
+            <Typography variant="h4" sx={{ fontWeight: 800, mt: 0.5, color: "info.main" }}>
+              {isLoading ? <Skeleton width={40} /> : dashboard?.totalOngoingClasses ?? 0}
+            </Typography>
+            <Typography variant="caption" sx={{ color: "text.secondary", mt: 0.5, display: "block" }}>
+              {t.dashboard.kpiOngoingClassesSub}
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              width: 50,
+              height: 50,
+              borderRadius: 2,
+              bgcolor: "info.50",
+              color: "info.main",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <GroupsRoundedIcon fontSize="medium" />
+          </Box>
+        </Paper>
+
+        {/* KPI 3: Members Community */}
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2.5,
+            borderRadius: 2.5,
+            bgcolor: "background.paper",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Box>
+            <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 600 }}>
+              {t.dashboard.kpiTotalMembers}
+            </Typography>
+            <Typography variant="h4" sx={{ fontWeight: 800, mt: 0.5, color: "success.main" }}>
+              {isLoading ? (
+                <Skeleton width={40} />
+              ) : (
+                (dashboard?.totalActiveStudents ?? 0) +
+                (dashboard?.totalActiveTeachers ?? 0)
+              )}
+            </Typography>
+            <Typography variant="caption" sx={{ color: "text.secondary", mt: 0.5, display: "block" }}>
+              {isLoading ? (
+                <Skeleton width={90} />
+              ) : (
+                `${dashboard?.totalActiveStudents ?? 0} học viên, ${dashboard?.totalActiveTeachers ?? 0} giảng viên`
+              )}
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              width: 50,
+              height: 50,
+              borderRadius: 2,
+              bgcolor: "success.50",
+              color: "success.main",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <SchoolRoundedIcon fontSize="medium" />
+          </Box>
+        </Paper>
+
+        {/* KPI 4: Attendance Rate */}
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2.5,
+            borderRadius: 2.5,
+            bgcolor: "background.paper",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Box>
+            <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 600 }}>
+              {t.dashboard.kpiAttendanceRate}
+            </Typography>
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 800,
+                mt: 0.5,
+                color:
+                  (dashboard?.attendanceRatePercent ?? 100) >= 80
+                    ? "success.main"
+                    : (dashboard?.attendanceRatePercent ?? 100) >= 60
+                    ? "warning.main"
+                    : "error.main",
+              }}
+            >
+              {isLoading ? (
+                <Skeleton width={50} />
+              ) : (
+                `${dashboard?.attendanceRatePercent ?? 100}%`
+              )}
+            </Typography>
+            <Typography variant="caption" sx={{ color: "text.secondary", mt: 0.5, display: "block" }}>
+              {t.dashboard.kpiAttendanceRateSub}
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              width: 50,
+              height: 50,
+              borderRadius: 2,
+              bgcolor: "secondary.50",
+              color: "secondary.main",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <FactCheckRoundedIcon fontSize="medium" />
+          </Box>
+        </Paper>
+      </Box>
+
+      {/* 3. Subscription Quota Card (Visible to CenterAdmin) */}
+      {isCenterAdmin && (
+        <Paper
+          variant="outlined"
+          sx={{
+            p: { xs: 2.5, sm: 3 },
+            borderRadius: 3,
+            bgcolor: "background.paper",
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { xs: "column", sm: "row" },
+              alignItems: { xs: "flex-start", sm: "center" },
+              justifyContent: "space-between",
+              gap: 1.5,
+              mb: 2.5,
+            }}
+          >
+            <Box>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  {t.dashboard.quotaCardTitle}
+                </Typography>
+                {isLoading ? (
+                  <Skeleton width={60} height={24} />
+                ) : (
+                  <Chip
+                    size="small"
+                    label={dashboard?.quota.planName}
+                    color="primary"
+                    sx={{ fontWeight: 700, borderRadius: 1.5 }}
+                  />
+                )}
+              </Box>
+              <Typography variant="body2" sx={{ color: "text.secondary", mt: 0.5 }}>
+                {t.dashboard.quotaCardDesc}
+              </Typography>
+            </Box>
+
+            {!isLoading && (
+              <Typography variant="subtitle2" sx={{ color: "text.secondary", fontWeight: 600 }}>
+                {dashboard?.quota.monthlyPrice.toLocaleString("vi-VN")}{" "}
+                {t.dashboard.currencyVndSuffix}
+              </Typography>
+            )}
+          </Box>
+
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 3 }}>
+            {/* Class Quota Progress */}
+            <Box sx={{ bgcolor: "action.hover", p: 2, borderRadius: 2 }}>
+              <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {t.dashboard.quotaClassesLabel}
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  {isLoading ? (
+                    <Skeleton width={50} />
+                  ) : (
+                    `${dashboard?.quota.currentClassesCount} / ${dashboard?.quota.maxClassesLimit} (${classUsagePercent}%)`
+                  )}
+                </Typography>
+              </Box>
+              <LinearProgress
+                variant={isLoading ? "indeterminate" : "determinate"}
+                value={classUsagePercent}
+                color={getQuotaColor(classUsagePercent)}
+                sx={{ height: 8, borderRadius: 4 }}
+              />
+            </Box>
+
+            {/* Student Quota Progress */}
+            <Box sx={{ bgcolor: "action.hover", p: 2, borderRadius: 2 }}>
+              <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {t.dashboard.quotaStudentsLabel}
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  {isLoading ? (
+                    <Skeleton width={50} />
+                  ) : (
+                    `${dashboard?.quota.currentStudentsCount} / ${dashboard?.quota.maxStudentsLimit} (${studentUsagePercent}%)`
+                  )}
+                </Typography>
+              </Box>
+              <LinearProgress
+                variant={isLoading ? "indeterminate" : "determinate"}
+                value={studentUsagePercent}
+                color={getQuotaColor(studentUsagePercent)}
+                sx={{ height: 8, borderRadius: 4 }}
+              />
+            </Box>
+          </Box>
+
+          {/* Quota warning alert if nearing limit */}
+          {!isLoading && (classUsagePercent > 85 || studentUsagePercent > 85) && (
+            <Alert
+              severity="warning"
+              icon={<WarningAmberRoundedIcon />}
+              sx={{ mt: 2, borderRadius: 2 }}
+            >
+              {t.dashboard.quotaCriticalLevel} ({classUsagePercent > 85 ? t.dashboard.quotaClassesLabel : t.dashboard.quotaStudentsLabel}). {t.dashboard.quotaUpgradeAction}.
+            </Alert>
+          )}
+        </Paper>
+      )}
+
+      {/* 4. Today & Upcoming Sessions Card */}
+      <Paper
+        variant="outlined"
+        sx={{
+          p: { xs: 2.5, sm: 3 },
+          borderRadius: 3,
+          bgcolor: "background.paper",
+        }}
+      >
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            mb: 2.5,
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <CalendarMonthRoundedIcon color="primary" />
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              {t.dashboard.todaySessionsTitle}
+            </Typography>
+            {dashboard?.todaySessions && dashboard.todaySessions.length > 0 && (
+              <Chip
+                size="small"
+                label={
+                  hasAnyTodaySessions
+                    ? t.dashboard.todaySessionsBadge
+                    : t.dashboard.upcomingSessionsBadge
+                }
+                color={hasAnyTodaySessions ? "success" : "info"}
+                sx={{ fontWeight: 600, borderRadius: 1.5 }}
+              />
+            )}
+          </Box>
+
+          <Button
+            component={Link}
+            href={ROUTES.TENANT.SCHEDULE(tenantSlug)}
+            endIcon={<ArrowForwardRoundedIcon />}
+            size="small"
+            sx={{ fontWeight: 600, textTransform: "none" }}
+          >
+            {t.dashboard.viewScheduleAction}
+          </Button>
+        </Box>
+
+        {/* Sessions list */}
+        {isLoading ? (
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} variant="rounded" height={68} />
+            ))}
+          </Box>
+        ) : !dashboard?.todaySessions || dashboard.todaySessions.length === 0 ? (
+          <Box
+            sx={{
+              py: 5,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              textAlign: "center",
+              gap: 1,
+            }}
+          >
+            <CalendarMonthRoundedIcon sx={{ fontSize: 44, color: "text.disabled" }} />
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+              {t.dashboard.noSessionsFound}
+            </Typography>
+            <Typography variant="body2" sx={{ color: "text.secondary", maxWidth: 450 }}>
+              {t.dashboard.noSessionsDesc}
+            </Typography>
+          </Box>
+        ) : (
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
+            {dashboard.todaySessions.map((session) => (
+              <Paper
+                key={session.sessionId}
+                variant="outlined"
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  display: "flex",
+                  flexDirection: { xs: "column", md: "row" },
+                  alignItems: { xs: "flex-start", md: "center" },
+                  justifyContent: "space-between",
+                  gap: 1.5,
+                  transition: "all 0.2s",
+                  "&:hover": {
+                    bgcolor: "action.hover",
+                    borderColor: "primary.main",
+                  },
+                }}
+              >
+                {/* Time & Session Number */}
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, minWidth: 200 }}>
+                  <Box
+                    sx={{
+                      p: 1,
+                      borderRadius: 1.5,
+                      bgcolor: "primary.50",
+                      color: "primary.main",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <AccessTimeRoundedIcon fontSize="small" />
+                  </Box>
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: "text.primary" }}>
+                      {formatTimeSlot(session.startTime, session.endTime)}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                      {t.dashboard.sessionNumberPrefix} {session.sessionNumber}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                {/* Class & Course */}
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, color: "text.primary" }}>
+                    {session.className}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: "text.secondary" }}>
+                    {session.courseTitle}
+                    {session.topic ? ` • ${t.dashboard.topicPrefix}: ${session.topic}` : ""}
+                  </Typography>
+                </Box>
+
+                {/* Room & Teacher */}
+                <Box sx={{ display: "flex", alignItems: "center", gap: 2, minWidth: 220 }}>
+                  {session.roomName && (
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                      <RoomRoundedIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                      <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 500 }}>
+                        {session.roomName}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                    <SchoolRoundedIcon fontSize="small" sx={{ color: "text.secondary" }} />
+                    <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 500 }}>
+                      {session.teacherName}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                {/* Action Button */}
+                <Box>
+                  {isCenterAdmin || isTeacher ? (
+                    <Button
+                      component={Link}
+                      href={ROUTES.TENANT.ATTENDANCE(tenantSlug)}
+                      variant="outlined"
+                      size="small"
+                      startIcon={<FactCheckRoundedIcon />}
+                      sx={{
+                        textTransform: "none",
+                        fontWeight: 600,
+                        borderRadius: 1.5,
+                        fontSize: "0.8rem",
+                      }}
+                    >
+                      {t.dashboard.takeAttendanceAction}
+                    </Button>
+                  ) : (
+                    <Button
+                      component={Link}
+                      href={ROUTES.TENANT.SCHEDULE(tenantSlug)}
+                      variant="outlined"
+                      size="small"
+                      sx={{
+                        textTransform: "none",
+                        fontWeight: 600,
+                        borderRadius: 1.5,
+                        fontSize: "0.8rem",
+                      }}
+                    >
+                      {t.dashboard.viewScheduleAction}
+                    </Button>
+                  )}
+                </Box>
+              </Paper>
+            ))}
+          </Box>
+        )}
+      </Paper>
+
+      {/* 5. Quick Actions Toolbar */}
+      <Box>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "text.secondary", mb: 1.5 }}>
+          {t.dashboard.quickActionsTitle}
+        </Typography>
+
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr 1fr",
+              sm: "repeat(4, 1fr)",
+            },
+            gap: 1.5,
+          }}
+        >
+          <Button
+            component={Link}
+            href={ROUTES.TENANT.COURSES(tenantSlug)}
+            variant="outlined"
+            startIcon={<MenuBookRoundedIcon />}
+            sx={{
+              justifyContent: "flex-start",
+              textTransform: "none",
+              fontWeight: 600,
+              borderRadius: 2,
+              p: 1.5,
+              borderColor: "divider",
+              color: "text.primary",
+              "&:hover": { borderColor: "primary.main", bgcolor: "action.hover" },
+            }}
+          >
+            {t.navigation.courses}
+          </Button>
+
+          <Button
+            component={Link}
+            href={ROUTES.TENANT.CLASSES(tenantSlug)}
+            variant="outlined"
+            startIcon={<GroupsRoundedIcon />}
+            sx={{
+              justifyContent: "flex-start",
+              textTransform: "none",
+              fontWeight: 600,
+              borderRadius: 2,
+              p: 1.5,
+              borderColor: "divider",
+              color: "text.primary",
+              "&:hover": { borderColor: "primary.main", bgcolor: "action.hover" },
+            }}
+          >
+            {t.dashboard.quickManageClasses}
+          </Button>
+
+          <Button
+            component={Link}
+            href={ROUTES.TENANT.MEMBERS(tenantSlug)}
+            variant="outlined"
+            startIcon={<PeopleAltRoundedIcon />}
+            sx={{
+              justifyContent: "flex-start",
+              textTransform: "none",
+              fontWeight: 600,
+              borderRadius: 2,
+              p: 1.5,
+              borderColor: "divider",
+              color: "text.primary",
+              "&:hover": { borderColor: "primary.main", bgcolor: "action.hover" },
+            }}
+          >
+            {t.dashboard.quickManageMembers}
+          </Button>
+
+          <Button
+            component={Link}
+            href={ROUTES.TENANT.SCHEDULE(tenantSlug)}
+            variant="outlined"
+            startIcon={<CalendarMonthRoundedIcon />}
+            sx={{
+              justifyContent: "flex-start",
+              textTransform: "none",
+              fontWeight: 600,
+              borderRadius: 2,
+              p: 1.5,
+              borderColor: "divider",
+              color: "text.primary",
+              "&:hover": { borderColor: "primary.main", bgcolor: "action.hover" },
+            }}
+          >
+            {t.dashboard.quickViewSchedule}
+          </Button>
+        </Box>
+      </Box>
+    </Box>
   );
 }
 
+export default DashboardView;
