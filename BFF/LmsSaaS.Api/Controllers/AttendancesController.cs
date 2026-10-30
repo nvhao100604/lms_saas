@@ -24,14 +24,10 @@ public class AttendancesController : ControllerBase
     private readonly AppDbContext dbContext;
     private readonly IPublishEndpoint? publishEndpoint;
 
-    public AttendancesController(AppDbContext dbContext, IPublishEndpoint publishEndpoint)
+    public AttendancesController(AppDbContext dbContext, IPublishEndpoint? publishEndpoint = null)
     {
         this.dbContext = dbContext;
         this.publishEndpoint = publishEndpoint;
-    }
-
-    public AttendancesController(AppDbContext dbContext) : this(dbContext, null!)
-    {
     }
 
     [HttpGet]

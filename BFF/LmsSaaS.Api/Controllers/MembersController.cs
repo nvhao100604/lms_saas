@@ -169,7 +169,7 @@ public class MembersController : ControllerBase
             if (tenant?.SubscriptionPlan != null && tenant.SubscriptionPlan.MaxStudentsLimit > 0)
             {
                 var currentStudentCount = await dbContext.TenantMembers
-                    .CountAsync(tm => tm.Role == RoleInTenant.Student);
+                    .CountAsync(tm => tm.Role == RoleInTenant.Student && tm.IsActive);
 
                 if (currentStudentCount >= tenant.SubscriptionPlan.MaxStudentsLimit)
                 {
