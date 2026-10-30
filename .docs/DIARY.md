@@ -1105,6 +1105,53 @@ Tài liệu này ghi lại toàn bộ lịch sử các phiên làm việc, nhữ
 * **Cấp phát thành viên thông minh và Kiểm soát hạn ngạch gói cước**:
   - Khi thêm học viên mới, hệ thống tự động kiểm tra trần số lượng học viên của gói dịch vụ mà trung tâm đang sử dụng (`MaxStudentsLimit`) trước khi cho phép thêm. Nếu học viên đã có tài khoản trên hệ thống, trung tâm chỉ cần gắn thêm quan hệ thành viên (`TenantMember`) mà không tạo trùng bản ghi người dùng (`User`), đảm bảo kiến trúc Multi-tenant liên thông hoàn hảo.
 
+---
+
+## [2026-10-30] Triển khai Bảng điều khiển Thống kê Trung tâm (Dashboard) & Sự kiện Cảnh báo Vắng mặt
+
+### Mục tiêu trong phiên làm việc
+* Tích hợp sự kiện vắng mặt `StudentAbsentIntegrationEvent` qua MassTransit trong `AttendancesController.cs` khi học viên bị điểm danh vắng mặt.
+* Xây dựng API thống kê trung tâm `GET /api/dashboard` và các mô hình CQS (`TodaySessionItemResponse`, `SubscriptionQuotaResponse`, `DashboardSummaryResponse`) ở tầng .NET 10 BFF.
+* Tầng Client (Next.js 16, MUI v9, SWR, i18n): cấu hình proxy rewrite, routes, types, service, SWR hook và chuyển đổi toàn bộ `DashboardView.tsx` sang 100% Material UI kèm hỗ trợ song ngữ (`vi.ts` / `en.ts`).
+* Đạt 100% test pass ở backend (.NET 10 xUnit) và 0 lỗi TypeScript / Next.js build.
+
+### Các công việc đã thực hiện
+1. **Kích hoạt Sự kiện Vắng mặt qua MassTransit**:
+   - `BFF/LmsSaaS.Api/Controllers/AttendancesController.cs`: Inject `IPublishEndpoint`, phát hiện danh sách học viên vừa bị chấm `Absent` (mới hoặc đổi trạng thái sang `Absent`), publish `StudentAbsentIntegrationEvent` an toàn sau khi transaction commit thành công.
+   - `BFF/LmsSaaS.UnitTests/Tests/AttendanceControllerTests.cs`: Bổ sung bài test `SaveSessionAttendances_WhenStudentMarkedAbsent_ShouldPublishStudentAbsentIntegrationEvent` với `TestPublishEndpoint`.
+2. **CQS Models & DashboardController tầng BFF**:
+   - `BFF/LmsSaaS.Core/DTOs/Dashboard/`: Tạo `TodaySessionItemResponse.cs`, `SubscriptionQuotaResponse.cs`, `DashboardSummaryResponse.cs` tuân thủ quy chuẩn không hậu tố `Dto`.
+   - `BFF/LmsSaaS.Api/Controllers/DashboardController.cs`: Endpoint `GET /api/dashboard` đếm khóa học đang mở, lớp đang vận hành, giảng viên & học viên hoạt động, tính tỷ lệ chuyên cần (Present + Late / Total attendances), lấy hạn ngạch gói cước kèm số lượng sử dụng thực tế, và lấy 5 buổi học hôm nay (hoặc 5 buổi sắp tới gần nhất) có phân quyền role-based.
+   - `BFF/LmsSaaS.UnitTests/Tests/DashboardControllerTests.cs`: 5 unit tests bao quát toàn bộ logic thống kê, tỷ lệ chuyên cần, hạn ngạch gói cước, phân quyền Teacher/Student/Admin và fallback lịch học.
+   - `dotnet test BFF/LmsSaaS.slnx`: 67/67 tests passed (100%).
+3. **Data Layer & Service phía Client**:
+   - `client/next.config.ts`: Bổ sung rewrite rule `/api/dashboard/:path*`.
+   - `client/src/constants/routes.ts`: Bổ sung `ROUTES.API.DASHBOARD.ROOT`.
+   - `client/src/types/dashboard.ts`: Định nghĩa types tương ứng tầng BFF, export qua `types/index.ts`.
+   - `client/src/services/dashboardService.ts`: Triển khai `getDashboardSummary`.
+   - `client/src/hooks/useDashboard.ts`: SWR hook với key scoped theo tenantSlug, export qua `hooks/index.ts`.
+4. **Giao diện 100% MUI & Song ngữ**:
+   - `client/src/locales/`: Bổ sung bộ từ điển song ngữ trong `types.ts`, `vi.ts` và `en.ts`.
+   - `client/src/components/dashboard/DashboardView.tsx`: Xây dựng lại hoàn chỉnh bằng MUI:
+     + Hero Welcome Banner với lời chào cá nhân hóa theo vai trò người dùng.
+     + 4 Thẻ KPI thống kê với icon và trạng thái loading skeleton.
+     + Thẻ Hạn ngạch Gói cước SaaS (`Subscription Quota Card`): Chỉ hiển thị cho Quản trị viên (`CenterAdmin`), thanh `<LinearProgress>` trực quan đổi màu (`primary`, `warning`, `error`) cảnh báo khi lớp học hoặc học viên tiệm cận giới hạn.
+     + Card Lịch học Hôm nay / Sắp tới: Hiển thị thời gian, phòng học, tên lớp, giáo viên và nút điều hướng tới màn hình Điểm danh (Admin/Teacher) hoặc Thời khóa biểu (Student).
+     + Quick Actions hỗ trợ thao tác nhanh.
+5. **Kiểm tra chất lượng**:
+   - `dotnet test BFF/LmsSaaS.slnx`: **67/67 passed 100%**.
+   - `pnpm --dir client exec tsc --noEmit`: **0 lỗi**.
+   - `pnpm --dir client run build`: **16/16 routes compile thành công**.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Xử lý bất đồng bộ an toàn khi phát sự kiện (Out-of-Transaction Publishing)**:
+  - Chỉ gọi `publishEndpoint.Publish()` sau khi `transaction.CommitAsync()` đã hoàn tất thành công. Tránh trường hợp gửi event cảnh báo tới học viên nhưng dữ liệu điểm danh trong database lại bị rollback do lỗi.
+* **Tách biệt truy vấn TenantSlug khi lấy buổi học**:
+  - Không nạp lồng `Include(cs => cs.Class).ThenInclude(c => c.Tenant)` trực tiếp vào câu truy vấn buổi học để tránh phụ thuộc dữ liệu ngầm định trong EF Core InMemory provider (khi test không seed bảng Tenants), thay vào đó tra cứu Tenant thông qua `dbContext.Tenants.IgnoreQueryFilters()` một cách độc lập và linh hoạt.
+* **Cảnh báo hạn ngạch trực quan (Color-shifting Progress Bar)**:
+  - Thanh hạn ngạch gói cước SaaS tự động chuyển màu dựa trên tỷ lệ sử dụng ($> 85\%$ đỏ, $70-85\%$ cam/vàng, $\le 70\%$ xanh), giúp người quản trị trung tâm nhận biết ngay lập tức nhu cầu nâng cấp gói cước mà không cần đọc những con số khô khan.
+
+
 
 
 

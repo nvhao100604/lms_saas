@@ -8,7 +8,7 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 
 | Trạng thái | Số lượng | Tỷ lệ |
 | :--- | :--- | :--- |
-| **Đã hoàn thành (Done)** | 26 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components, Courses & Classes BFF API, MUI Enterprise SaaS Transformation, UI/UX Overhaul & Role-Based UI Rendering, Enrollments, Schedule & Attendance Management, Event-Driven Notification System, Members & Student Management) |
+| **Đã hoàn thành (Done)** | 27 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components, Courses & Classes BFF API, MUI Enterprise SaaS Transformation, UI/UX Overhaul & Role-Based UI Rendering, Enrollments, Schedule & Attendance Management, Event-Driven Notification System, Members & Student Management, Real-time Center Dashboard & Subscription Quota, MassTransit Student Absent Notification) |
 | **Đang tiến hành (In Progress)** | 0 | 0% |
 | **Kế hoạch sắp tới (Todo)** | 0 | - |
 
@@ -454,6 +454,33 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
     - `pnpm --dir client run build`: **16/16 routes compile thành công**.
 * **Người thực hiện**: Senior Fullstack Architect & User.
 
+### [2026-10-30] Bảng điều khiển Thống kê Trung tâm (Dashboard) & Kích hoạt Sự kiện Cảnh báo Vắng mặt
+* **Mô tả**: Xây dựng bảng điều khiển thời gian thực cho trung tâm (`/[tenantSlug]/dashboard`) kèm thanh giám sát hạn ngạch gói cước SaaS (`Subscription Quota`) với cảnh báo đổi màu trực quan khi tiệm cận giới hạn; đồng thời kích hoạt phát sự kiện `StudentAbsentIntegrationEvent` qua MassTransit khi chấm điểm danh vắng mặt.
+* **Kết quả**:
+  * **1. Kích hoạt Sự kiện Vắng mặt qua MassTransit**:
+    - [AttendancesController.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Api/Controllers/AttendancesController.cs): Inject `IPublishEndpoint`, phát hiện các học viên mới bị chấm `Absent` hoặc đổi trạng thái sang `Absent`, bắn `StudentAbsentIntegrationEvent` an toàn sau khi `transaction.CommitAsync()`.
+    - [AttendanceControllerTests.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.UnitTests/Tests/AttendanceControllerTests.cs): Thêm unit test với `TestPublishEndpoint`, xác minh việc phát sự kiện khi chấm vắng mặt thành công.
+  * **2. CQS Models & API `DashboardController.cs` tầng BFF**:
+    - [TodaySessionItemResponse.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Dashboard/TodaySessionItemResponse.cs), [SubscriptionQuotaResponse.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Dashboard/SubscriptionQuotaResponse.cs), [DashboardSummaryResponse.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Dashboard/DashboardSummaryResponse.cs): Chuẩn CQS không hậu tố `Dto`.
+    - [DashboardController.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Api/Controllers/DashboardController.cs): `GET /api/dashboard` tổng hợp số lượng khóa học mở, lớp đang vận hành, giảng viên & học viên hoạt động, tỷ lệ chuyên cần trung tâm (%), hạn ngạch gói cước (kèm số lượng thực tế), và danh sách lịch học hôm nay (fallback 5 buổi gần nhất nếu hôm nay không có lịch) có phân quyền (Teacher chỉ thấy lớp dạy, Student chỉ thấy lớp học, Admin thấy toàn bộ).
+    - [DashboardControllerTests.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.UnitTests/Tests/DashboardControllerTests.cs): 5 unit tests bao quát toàn bộ logic thống kê, tỷ lệ điểm danh, hạn ngạch gói cước, phân quyền và fallback lịch học.
+    - `dotnet test BFF/LmsSaaS.slnx`: **67/67 tests passed 100%**.
+  * **3. Tầng Frontend (Next.js 16, MUI v9, SWR, i18n)**:
+    - [next.config.ts](file:///d:/Project/SAAS/client/next.config.ts): Cấu hình proxy rewrite `/api/dashboard/:path*`.
+    - [routes.ts](file:///d:/Project/SAAS/client/src/constants/routes.ts): Bổ sung `ROUTES.API.DASHBOARD.ROOT`.
+    - [types/dashboard.ts](file:///d:/Project/SAAS/client/src/types/dashboard.ts) & [types/index.ts](file:///d:/Project/SAAS/client/src/types/index.ts): Khai báo types chuẩn CQS.
+    - [dashboardService.ts](file:///d:/Project/SAAS/client/src/services/dashboardService.ts) & [useDashboard.ts](file:///d:/Project/SAAS/client/src/hooks/useDashboard.ts): Tầng gọi API và custom hook với SWR cache.
+    - [DashboardView.tsx](file:///d:/Project/SAAS/client/src/components/dashboard/DashboardView.tsx): Chuyển đổi 100% sang Material UI:
+      + Hero Welcome Banner với lời chào cá nhân hóa theo vai trò.
+      + 4 KPI Cards với icon và chỉ số thời gian thực (Khóa học mở, Lớp học đang chạy, Tổng nhân sự & Học viên, Tỷ lệ chuyên cần).
+      + Thẻ Hạn ngạch Gói cước SaaS (`Subscription Quota`): Thanh `<LinearProgress>` hiển thị lớp học và học viên đã dùng / giới hạn gói, tự động đổi màu cảnh báo (`primary` $\le 70\%$, `warning` $70-85\%$, `error` $> 85\%$).
+      + Card Lịch học Hôm nay / Sắp tới: Hiển thị khung giờ, phòng học, tên lớp, môn học, giảng viên và nút bấm điều hướng nhanh tới màn hình Điểm danh / Thời khóa biểu.
+      + Thao tác nhanh (Quick Actions).
+    - [locales/](file:///d:/Project/SAAS/client/src/locales/): Bổ sung đầy đủ bộ khóa song ngữ trong `types.ts`, `vi.ts` và `en.ts`.
+    - `pnpm --dir client exec tsc --noEmit`: **0 lỗi TypeScript**.
+    - `pnpm --dir client run build`: **16/16 routes compile thành công**.
+* **Người thực hiện**: Senior Fullstack Architect & User.
+
 ---
 
 ## 3. TÍNH NĂNG ĐANG TIẾN HÀNH (IN PROGRESS)
@@ -476,7 +503,7 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 - [x] Client Auth context/middleware quản lý token lưu trữ và route protection.
 
 ### Giai đoạn 3: Phân hệ Quản trị & Khóa học (LMS Core)
-- [ ] Dashboard tổng quan (Thống kê học viên, doanh thu, khóa học).
+- [x] Dashboard tổng quan (Thống kê học viên, lớp học, khóa học, tỷ lệ chuyên cần & hạn ngạch gói cước SaaS).
 - [x] Backend API Quản lý Khóa học & Lớp học (`/api/courses`, `/api/classes`, kiểm soát hạn ngạch, sinh lịch học, chống trùng lịch).
 - [x] Giao diện Client Quản lý Khóa học & Lớp học (Tạo khóa học, chương trình học, upload bài giảng).
 - [ ] Giao diện người học (Trang chi tiết khóa học, trình phát video bài giảng, theo dõi tiến độ).
