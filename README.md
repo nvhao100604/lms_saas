@@ -25,13 +25,13 @@ An enterprise-grade Multi-Tenant Learning Management System (LMS SaaS) built wit
 * **Backend For Frontend (`BFF/`)**:
   * **Platform**: .NET 10 Web API, C# 13+
   * **Architecture**: Clean Architecture (`LmsSaaS.Api`, `LmsSaaS.Core`, `LmsSaaS.Infrastructure`, `LmsSaaS.UnitTests`)
-  * **Database & ORM**: PostgreSQL (Supabase) with Entity Framework Core 10
+  * **Database & ORM**: PostgreSQL (Supabase) with Entity Framework Core 10 and auto-migration on startup (`MigrateAsync()`)
   * **Multi-tenancy Isolation**: Tenant data isolation via `ITenantEntity` and automatic EF Core Global Query Filters through reflection
   * **Event-Driven Messaging**: **MassTransit 8** with **RabbitMQ** (AMQP 0-9-1) and **Hybrid Transport** (dynamic fallback to In-Memory bus when running locally without Docker)
   * **Multi-Tenant Background Workers**: Context restoration inside MassTransit Consumers (`ICurrentTenantService.SetTenantContext`) for background threads
   * **Command Query Separation (CQS)**: Explicit naming without `Dto` suffixes (`*Request`, `*Response`), dynamic HTTP PATCH using `ToPatchDictionary()` reflection
-  * **Scheduling & Conflict Detection**: Automated periodic session generation (`ClassSessions`), instructor time conflict detection, and subscription plan limits enforcement (`MaxClassesLimit`)
-  * **Testing**: xUnit, NSubstitute, .NET Test SDK (100% test pass rate)
+  * **Resource & Safety Limits**: Quota enforcement (`MaxClassesLimit`, `MaxStudentsLimit`), Safety Downgrade Check, instructor time conflict detection, and automated session scheduling
+  * **Testing**: xUnit, NSubstitute, .NET Test SDK (70 automated test cases, 100% pass rate)
 * **Infrastructure & CI/CD**:
   * **Containerization**: Docker Compose with `lms-rabbitmq` (`rabbitmq:4-management-alpine`) and `lms-bff`
   * **Git Hooks**: Husky 9 + lint-staged (blocking commits on linter, type-check, or unit test failures)
@@ -51,20 +51,22 @@ An enterprise-grade Multi-Tenant Learning Management System (LMS SaaS) built wit
 │   └── skills/ui-ux-pro-max/SKILL.md # UI/UX design intelligence skill for Next.js & MUI
 ├── .docs/
 │   ├── RULES.md                      # Mandatory coding rules (SOLID, DRY, CQS, No emoji)
-│   ├── FEATURES_DONE.md              # Detailed progress and completed features tracker
+│   ├── FEATURES_DONE.md              # Detailed progress and completed features tracker (28 features)
 │   └── DIARY.md                      # Engineering diary and architectural decision records (ADR)
 ├── .AGENT.md                         # Central coordination index for AI Agents
 ├── docker-compose.yml                # Docker services (RabbitMQ 4, .NET 10 BFF)
 ├── BFF/                              # Backend For Frontend (.NET 10 Web API)
-│   ├── LmsSaaS.Api/                  # Controllers (Auth, Courses, Classes, Schedule, Notifications), Middlewares
+│   ├── LmsSaaS.Api/                  # Controllers (Auth, Courses, Classes, Schedule, Notifications, Members, Dashboard)
 │   ├── LmsSaaS.Core/                 # Entities, Interfaces, Events, CQS Models, Enums
-│   ├── LmsSaaS.Infrastructure/       # AppDbContext, MassTransit Consumers, Supabase Npgsql, DI setup
-│   ├── LmsSaaS.UnitTests/            # xUnit automated test suite (55 test cases, 100% passed)
+│   ├── LmsSaaS.Infrastructure/       # AppDbContext, Migrations, MassTransit Consumers, Supabase Npgsql, DI setup
+│   ├── LmsSaaS.UnitTests/            # xUnit automated test suite (70 test cases, 100% passed)
 │   └── LmsSaaS.slnx                  # .NET Solution file
 └── client/                           # Frontend application (Next.js 16 + MUI)
     ├── src/
     │   ├── app/                      # App Router (layouts, [tenantSlug], auth route handlers)
     │   ├── components/
+    │   │   ├── dashboard/            # Center Dashboard (KPI cards, Quota progress, Plan upgrade dialog)
+    │   │   ├── members/              # Staff & Students module (MembersView, AddMemberDialog, Role/Status toggles)
     │   │   ├── classes/              # Classes module (ClassesView, ClassDialog, EnrollmentDrawer)
     │   │   ├── courses/              # Courses module (CoursesView, CachedCourseCatalog, CourseDialog)
     │   │   ├── schedule/             # 7-day weekly schedule grid with role-based filtering
@@ -72,10 +74,10 @@ An enterprise-grade Multi-Tenant Learning Management System (LMS SaaS) built wit
     │   │   ├── layout/               # App Shell MUI (WorkspaceSidebar, WorkspaceHeader, NotificationBell)
     │   │   └── providers/            # MuiProvider, Redux StoreProvider, SWRProvider, AuthProvider
     │   ├── constants/                # Routes (ROUTES.API), Cache tags, Environment constants
-    │   ├── hooks/                    # SWR Hooks (useCourses, useClasses, useSchedule, useNotifications)
+    │   ├── hooks/                    # SWR Hooks (useDashboard, useMembers, useCourses, useClasses, useSchedule, useNotifications)
     │   ├── locales/                  # Bilingual dictionaries (vi.ts, en.ts, types.ts)
     │   ├── lib/                      # Axios client, utils, Zod schemas
-    │   ├── services/                 # API client services (notificationService, classService, etc.)
+    │   ├── services/                 # API client services (dashboardService, memberService, notificationService, etc.)
     │   ├── store/                    # Redux Toolkit store (languageSlice, hooks)
     │   ├── theme/                    # MUI Enterprise Theme (palette, typography, overrides)
     │   └── types/                    # TypeScript interfaces aligned with Backend CQS contracts
@@ -105,14 +107,29 @@ An enterprise-grade Multi-Tenant Learning Management System (LMS SaaS) built wit
 5. **Weekly Schedule Grid (`/schedule`)**:
    - 7-day timetable (Monday through Sunday) with week navigation and today highlight.
    - Dynamic role-based view: Admins view all classes, Instructors view assigned classes, Students view enrolled classes with personal attendance status.
-6. **Batch Attendance Roll-Call (`/attendance`)**:
+6. **Batch Attendance Roll-Call & Absent Event (`/attendance`)**:
    - Real-time attendance KPIs (Total, Present, Late, Absent).
    - Topic entry, "Mark All Present" shortcut, and 4-state toggle per student.
    - Atomic batch upsert executed in a single Database Transaction (ACID All-or-Nothing).
+   - **Event Publishing**: MassTransit automatically emits `StudentAbsentIntegrationEvent` when a student is marked Absent, delivering an alert directly to their notification bell.
 7. **Event-Driven Notification System (`Notifications`)**:
    - **Broker & Consumers**: MassTransit 8 with RabbitMQ (AMQP) and In-Memory fallback. Background consumers restore tenant context and persist notifications for class assignment and absence alerts.
    - **MUI Notification Bell**: Embedded in `WorkspaceHeader` with unread badge count, popover drawer, unread highlight dot, and Vietnamese/English relative timestamps.
    - **Zero Technical Jargon**: 100% user-friendly, clean UI without any technical infrastructure terms.
+8. **Staff & Students Management (`/members`)**:
+   - Intelligent provisioning with subscription plan limits enforcement (`MaxStudentsLimit`).
+   - Automatic user account discovery / creation with customizable initial passwords.
+   - **Self-Lockout Prevention**: Guaranteed protection preventing administrators from accidentally demoting or locking their own account.
+   - 4 Top KPI cards, full search/filter toolbar, inline role/status quick-toggles, and active member dropdown filtering (`IsActive == true`).
+9. **Center Overview Dashboard (`/dashboard`)**:
+   - 4 Top KPI cards: Active Enrolling Courses, Operational Classes, Community Size (Students & Teachers), Roll-call Attendance Rate (%).
+   - Today's & Upcoming Schedule list with direct shortcut to Roll-call Attendance or Timetable.
+   - Role-based scoping: Admins see center-wide metrics, Teachers see assigned cohorts, Students see personal learning schedule.
+10. **SaaS Subscription Quota & Self-Service Plan Upgrades**:
+    - Real-time Quota Monitoring Card with color-shifting progress bars (`primary` $\le 70\%$, `warning` $70-85\%$, `error` $> 85\%$).
+    - 3-column comparison `<Dialog>` comparing Starter, Pro, and Enterprise tiers (price/mo, class/student capacities).
+    - **Safety Downgrade Check**: Backend validates existing active classes and enrolled students before permitting plan downgrades (`400 Bad Request` if limits are exceeded).
+    - Instant SWR cache invalidation on plan switch without page reloads.
 
 ---
 
@@ -157,7 +174,7 @@ docker compose up -d
 
 **Option B: Running Locally (In-Memory Bus Fallback)**:
 ```bash
-# Terminal 1: Run .NET 10 BFF (Port 5045)
+# Terminal 1: Run .NET 10 BFF (Port 5045 - auto-runs DB migrations & seed data)
 dotnet run --project BFF/LmsSaaS.Api
 
 # Terminal 2: Run Next.js 16 Client (Port 3000)
@@ -173,7 +190,7 @@ pnpm --dir client dev
 All checks must pass 100% green before creating any commit:
 
 ```bash
-# 1. Run Backend Unit Tests (55 test cases, 100% pass)
+# 1. Run Backend Unit Tests (70 test cases, 100% pass)
 dotnet test BFF/LmsSaaS.slnx
 
 # 2. Build Backend Solution (0 warnings, 0 errors)
@@ -185,7 +202,7 @@ pnpm --dir client exec tsc --noEmit
 # 4. Frontend ESLint
 pnpm --dir client run lint
 
-# 5. Production Next.js 16 Build
+# 5. Production Next.js 16 Build (16/16 routes compiled)
 pnpm --dir client run build
 ```
 
@@ -214,13 +231,13 @@ Dự án được thiết kế theo các tiêu chuẩn kiến trúc phần mềm
 * **Backend For Frontend (`BFF/`)**:
   * **Nền tảng**: .NET 10 Web API, C# 13+
   * **Kiến trúc**: Clean Architecture (`LmsSaaS.Api`, `LmsSaaS.Core`, `LmsSaaS.Infrastructure`, `LmsSaaS.UnitTests`)
-  * **Cơ sở dữ liệu**: PostgreSQL Supabase kết hợp Entity Framework Core 10
+  * **Cơ sở dữ liệu**: PostgreSQL Supabase kết hợp Entity Framework Core 10, tự động chạy migration khi khởi động API (`MigrateAsync()`)
   * **Multi-tenancy**: Tự động lọc dữ liệu khách thuê qua `ITenantEntity` và Global Query Filters
   * **Xử lý sự kiện (Event-Driven)**: **MassTransit 8** kết nối **RabbitMQ** với cơ chế **Hybrid Transport** (tự động chuyển sang In-Memory Bus khi chạy local không có Docker)
   * **Khôi phục ngữ cảnh Tenant**: Phục hồi thông tin Tenant cho Scoped Service trong luồng nền của Consumer (`ICurrentTenantService.SetTenantContext`)
   * **Cơ chế CQS & Dynamic HTTP PATCH**: Extension `ToPatchDictionary()` sử dụng Reflection chỉ cập nhật đúng các cột thực tế thay đổi, không dùng hậu tố `Dto`
-  * **Thuật toán Xếp lịch & Kiểm soát Hạn ngạch**: Tự động rải lịch học định kỳ (`ClassSessions`), phát hiện trùng lịch giảng dạy của giảng viên và kiểm soát hạn ngạch gói cước (`MaxClassesLimit`)
-  * **Kiểm thử**: xUnit, NSubstitute, .NET Test SDK (100% tests passed)
+  * **Thuật toán Xếp lịch & Kiểm soát Hạn ngạch**: Tự động rải lịch học định kỳ (`ClassSessions`), phát hiện trùng lịch giảng dạy của giảng viên, kiểm soát an toàn hạ gói cước (`Safety Downgrade Check`) và hạn ngạch gói cước (`MaxClassesLimit`, `MaxStudentsLimit`)
+  * **Kiểm thử**: xUnit, NSubstitute, .NET Test SDK (70 tests toàn solution đạt 100%)
 * **Hạ tầng & CI/CD**:
   * **Container hóa**: Docker Compose với dịch vụ `lms-rabbitmq` (`rabbitmq:4-management-alpine`) và `lms-bff`
   * **Git Hooks**: Husky 9 + lint-staged (chặn commit lỗi linter, type-check, hoặc unit test thất bại)
@@ -240,20 +257,22 @@ Dự án được thiết kế theo các tiêu chuẩn kiến trúc phần mềm
 │   └── skills/ui-ux-pro-max/SKILL.md # Trí tuệ thiết kế UI/UX độc lập cho Frontend
 ├── .docs/
 │   ├── RULES.md                      # Quy tắc code bắt buộc (SOLID, DRY, quy chuẩn CQS)
-│   ├── FEATURES_DONE.md              # Bảng theo dõi tiến độ chi tiết từng phân hệ
+│   ├── FEATURES_DONE.md              # Bảng theo dõi tiến độ chi tiết từng phân hệ (28 tính năng)
 │   └── DIARY.md                      # Nhật ký công việc và quyết định kiến trúc kỹ thuật
 ├── .AGENT.md                         # File chỉ mục và điều phối trung tâm cho AI Agent
 ├── docker-compose.yml                # Khởi chạy RabbitMQ 4 và BFF .NET 10
 ├── BFF/                              # Mã nguồn Backend (.NET 10 Web API)
-│   ├── LmsSaaS.Api/                  # Controllers (Auth, Courses, Classes, Schedule, Notifications), Middlewares
+│   ├── LmsSaaS.Api/                  # Controllers (Auth, Courses, Classes, Schedule, Notifications, Members, Dashboard)
 │   ├── LmsSaaS.Core/                 # Entities, Interfaces, Events, CQS Models, Enums
-│   ├── LmsSaaS.Infrastructure/       # AppDbContext, MassTransit Consumers, Npgsql, DI setup
-│   ├── LmsSaaS.UnitTests/            # Bộ kiểm thử Unit Test xUnit (55 test cases đạt 100%)
+│   ├── LmsSaaS.Infrastructure/       # AppDbContext, Migrations, MassTransit Consumers, Npgsql, DI setup
+│   ├── LmsSaaS.UnitTests/            # Bộ kiểm thử Unit Test xUnit (70 test cases đạt 100%)
 │   └── LmsSaaS.slnx                  # Solution file .NET
 └── client/                           # Mã nguồn Frontend (Next.js 16 + MUI)
     ├── src/
     │   ├── app/                      # App Router (layout, [tenantSlug], api proxy routes)
     │   ├── components/
+    │   │   ├── dashboard/            # Bảng điều khiển (KPI cards, Quota bar, Modal so sánh nâng cấp gói)
+    │   │   ├── members/              # Phân hệ Thành viên (MembersView, Dialog tạo mới, Switch trạng thái)
     │   │   ├── classes/              # Phân hệ Lớp học (ClassesView, Dialog mở lớp, EnrollmentDrawer)
     │   │   ├── courses/              # Phân hệ Khóa học (CoursesView, CachedCourseCatalog, Dialogs)
     │   │   ├── schedule/             # Thời khóa biểu tuần 7 ngày theo vai trò
@@ -261,10 +280,10 @@ Dự án được thiết kế theo các tiêu chuẩn kiến trúc phần mềm
     │   │   ├── layout/               # App Shell MUI (WorkspaceSidebar, WorkspaceHeader, NotificationBell)
     │   │   └── providers/            # MuiProvider, Redux StoreProvider, SWRProvider, AuthProvider
     │   ├── constants/                # Routes (ROUTES.API), Cache tags, Cấu hình môi trường
-    │   ├── hooks/                    # SWR Hooks (useCourses, useClasses, useSchedule, useNotifications)
+    │   ├── hooks/                    # SWR Hooks (useDashboard, useMembers, useCourses, useClasses, useSchedule, useNotifications)
     │   ├── locales/                  # Bộ từ điển song ngữ (vi.ts, en.ts, types.ts)
     │   ├── lib/                      # Axios client, utils, Zod schemas
-    │   ├── services/                 # Thin API services (notificationService, classService...)
+    │   ├── services/                 # Thin API services (dashboardService, memberService, notificationService...)
     │   ├── store/                    # Redux Toolkit store (languageSlice, hooks)
     │   ├── theme/                    # MUI Enterprise Theme (palette, typography, component overrides)
     │   └── types/                    # Types đồng bộ CQS (Create/Patch/Response không dùng đuôi Dto)
@@ -303,15 +322,33 @@ Dự án được thiết kế theo các tiêu chuẩn kiến trúc phần mềm
 - Lưới thời khóa biểu 7 ngày (Thứ 2 &rarr; Chủ Nhật) trực quan bằng Material UI.
 - Phân quyền thông minh: `CenterAdmin` xem toàn bộ trung tâm (kèm bộ lọc lớp/giảng viên), `Teacher` chỉ xem các lớp mình phụ trách kèm nút *"Điểm danh"*, `Student` chỉ xem lớp đã ghi danh kèm huy hiệu trạng thái chuyên cần cá nhân.
 
-#### 3.6. Sổ Điểm danh Buổi học theo Lô (`/attendance`)
+#### 3.6. Sổ Điểm danh Buổi học theo Lô & Cảnh báo Vắng mặt (`/attendance`)
 - Thống kê 4 thẻ KPI chuyên cần theo thời gian thực (Tổng số, Có mặt, Đi muộn, Vắng).
 - Ô nhập chủ đề bài giảng (`Topic`), nút *"Đánh dấu tất cả Có mặt"*, `<ToggleButtonGroup>` 4 trạng thái và ô ghi chú học viên.
 - Thao tác lưu điểm danh theo lô bọc trong một Database Transaction duy nhất (All-or-Nothing).
+- **Phát sự kiện MassTransit**: Tự động bắn `StudentAbsentIntegrationEvent` khi học viên bị đánh dấu Vắng mặt để chuông thông báo gửi cảnh báo tức thì.
 
 #### 3.7. Hệ thống Thông báo Hướng sự kiện (Event-Driven Notification System)
 - **Hạ tầng Broker & Consumers**: MassTransit 8 kết nối RabbitMQ (AMQP 0-9-1) và In-Memory Bus fallback. Các Background Consumer khôi phục ngữ cảnh Tenant an toàn và ghi bản ghi thông báo phân công giảng dạy hoặc cảnh báo vắng mặt.
 - **Chuông thông báo MUI ([NotificationBell.tsx](file:///client/src/components/layout/NotificationBell.tsx))**: Tích hợp trên `WorkspaceHeader` với Badge đỏ hiển thị số lượng chưa đọc, Popover cuộn êm ái, đánh dấu thông báo chưa đọc (chấm xanh + nền sáng), thời gian tương đối đa ngữ (VI / EN).
 - **Giao diện sạch (Zero Technical Jargon)**: Thân thiện tuyệt đối với người dùng cuối, không xuất hiện bất kỳ thuật ngữ kỹ thuật hạ tầng nào trên màn hình.
+
+#### 3.8. Quản lý Nhân sự & Học viên Trung tâm (`/members`)
+- Cấp phát thành viên thông minh: Tự động kiểm tra trần số lượng học viên của gói cước (`MaxStudentsLimit`), tự động tìm kiếm người dùng sẵn có hoặc tạo tài khoản mới với mật khẩu khởi tạo tùy chọn.
+- **Bảo vệ an toàn Quản trị viên (Self-Lockout Prevention)**: Chặn tuyệt đối người quản trị tự hạ quyền hoặc tự khóa tài khoản của chính mình cả ở tầng BFF và giao diện Client.
+- 4 thẻ KPI phân bổ nhân sự, thanh công cụ tìm kiếm và lọc vai trò, bảng danh sách thành viên với quick-toggle vai trò và trạng thái (`Switch`).
+- Đồng bộ Dropdown giảng viên và học viên: Chỉ hiển thị các thành viên đang hoạt động (`IsActive == true`).
+
+#### 3.9. Bảng điều khiển Thống kê Trung tâm (`/dashboard`)
+- 4 Thẻ KPI hàng đầu: Khóa học mở tuyển sinh, Lớp học đang vận hành, Quy mô thành viên (Học viên & Giảng viên), Tỷ lệ chuyên cần toàn trung tâm (%).
+- Danh sách lịch học Hôm nay & Sắp tới: Hiển thị khung giờ, phòng học, tên lớp, môn học, giảng viên và nút bấm chuyển nhanh sang màn hình Điểm danh (Admin/Teacher) hoặc Thời khóa biểu (Student).
+- Phân quyền theo vai trò (Admin thấy toàn trung tâm, Teacher thấy lớp dạy, Student thấy lớp học).
+
+#### 3.10. Quản lý Hạn ngạch & Tự phục vụ Nâng cấp Gói cước SaaS
+- Thẻ giám sát hạn ngạch tài nguyên (`Subscription Quota`) với 2 thanh `<LinearProgress>` trực quan đổi màu cảnh báo (`primary` $\le 70\%$, `warning` $70-85\%$, `error` $> 85\%$).
+- Hộp thoại `<Dialog maxWidth="md" fullWidth>` so sánh trực quan các gói cước dịch vụ (Starter, Pro, Enterprise...) theo lưới 3 cột, hiển thị giá tiền/tháng và giới hạn số lớp, số học viên.
+- **Kiểm tra an toàn khi hạ gói (Safety Downgrade Check)**: Backend từ chối với mã `400 Bad Request` nếu số lượng lớp học hoặc học viên đang hoạt động vượt quá giới hạn của gói cước mới.
+- Tự động làm mới dữ liệu tức thì qua SWR `mutate()` sau khi chuyển gói thành công.
 
 ---
 
@@ -356,7 +393,7 @@ docker compose up -d
 
 **Cách 2: Chạy Local (Tận dụng In-Memory Bus)**:
 ```bash
-# Cửa sổ 1: Khởi chạy Backend .NET 10 BFF (Port 5045)
+# Cửa sổ 1: Khởi chạy Backend .NET 10 BFF (Port 5045 - tự động chạy DB migrations & seed data)
 dotnet run --project BFF/LmsSaaS.Api
 
 # Cửa sổ 2: Khởi chạy Frontend Next.js 16 (Port 3000)
@@ -372,7 +409,7 @@ pnpm --dir client dev
 Toàn bộ dự án phải đạt 100% tiêu chuẩn xanh trước khi triển khai hoặc tạo commit:
 
 ```bash
-# 1. Kiểm tra Backend Unit Tests (55 test cases đạt 100%)
+# 1. Kiểm tra Backend Unit Tests (70 test cases đạt 100%)
 dotnet test BFF/LmsSaaS.slnx
 
 # 2. Biên dịch giải pháp Backend (0 warning, 0 error)
@@ -384,7 +421,7 @@ pnpm --dir client exec tsc --noEmit
 # 4. Kiểm tra ESLint
 pnpm --dir client run lint
 
-# 5. Biên dịch thử nghiệm bản Production Next.js 16
+# 5. Biên dịch thử nghiệm bản Production Next.js 16 (16/16 routes thành công)
 pnpm --dir client run build
 ```
 
