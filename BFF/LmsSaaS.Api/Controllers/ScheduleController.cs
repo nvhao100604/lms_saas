@@ -30,20 +30,23 @@ public class ScheduleController(AppDbContext dbContext) : ControllerBase
         DateTimeOffset toDate;
 
         var now = DateTimeOffset.UtcNow;
-        if (DateTimeOffset.TryParse(from, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsedFrom))
+        if (DateTimeOffset.TryParse(from, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsedFrom))
         {
-            fromDate = parsedFrom.Date;
+            var utcFrom = parsedFrom.UtcDateTime;
+            fromDate = new DateTimeOffset(utcFrom.Year, utcFrom.Month, utcFrom.Day, 0, 0, 0, TimeSpan.Zero);
         }
         else
         {
             var dayOfWeek = (int)now.DayOfWeek;
             var daysToMonday = dayOfWeek == 0 ? -6 : 1 - dayOfWeek;
-            fromDate = now.Date.AddDays(daysToMonday);
+            var monday = now.AddDays(daysToMonday);
+            fromDate = new DateTimeOffset(monday.Year, monday.Month, monday.Day, 0, 0, 0, TimeSpan.Zero);
         }
 
-        if (DateTimeOffset.TryParse(to, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsedTo))
+        if (DateTimeOffset.TryParse(to, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsedTo))
         {
-            toDate = parsedTo.Date.AddDays(1).AddTicks(-1);
+            var utcTo = parsedTo.UtcDateTime;
+            toDate = new DateTimeOffset(utcTo.Year, utcTo.Month, utcTo.Day, 0, 0, 0, TimeSpan.Zero).AddDays(1).AddTicks(-1);
         }
         else
         {

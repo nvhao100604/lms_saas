@@ -116,4 +116,32 @@ public class ScheduleControllerTests
             Assert.Equal("Present", response.Data![0].MyAttendanceStatus);
         }
     }
+
+    [Fact]
+    public async Task GetSchedule_WithoutFromAndTo_ShouldDefaultToCurrentWeekUtcSuccessfully()
+    {
+        var (context, controller, tenantId, teacherId) = SetupTestController("Teacher");
+        using (context)
+        {
+            var course = new Course { Id = Guid.NewGuid(), TenantId = tenantId, Title = "DevOps" };
+            var class1 = new Class { Id = Guid.NewGuid(), TenantId = tenantId, CourseId = course.Id, TeacherId = teacherId, Name = "Class DevOps", Status = ClassStatus.Ongoing };
+            var now = DateTimeOffset.UtcNow;
+            var session1 = new ClassSession { Id = Guid.NewGuid(), TenantId = tenantId, ClassId = class1.Id, SessionNumber = 1, StartTime = now, EndTime = now.AddHours(2) };
+
+            context.Users.Add(new User { Id = teacherId, Email = "teacher@test.com", FullName = "Teacher Name" });
+            context.Courses.Add(course);
+            context.Classes.Add(class1);
+            context.ClassSessions.Add(session1);
+            await context.SaveChangesAsync();
+
+            // Act: call with null from and to
+            var actionResult = await controller.GetSchedule(null, null, null, null);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(actionResult);
+            var response = Assert.IsType<ApiResponse<IReadOnlyList<ScheduleSessionResponse>>>(okResult.Value);
+            Assert.True(response.Success);
+            Assert.Single(response.Data!);
+        }
+    }
 }
