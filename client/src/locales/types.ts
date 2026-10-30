@@ -115,6 +115,17 @@ export interface DashboardTranslations {
   quickManageMembers: string;
   quickViewSchedule: string;
   currencyVndSuffix: string;
+  upgradePlanBtn: string;
+  planDialogTitle: string;
+  planDialogDesc: string;
+  currentPlanBadge: string;
+  selectPlanBtn: string;
+  selectingPlanBtn: string;
+  planPerMonth: string;
+  planMaxClasses: string;
+  planMaxStudents: string;
+  changePlanSuccess: string;
+  changePlanFailed: string;
 }
 
 export interface CoursesTranslations {

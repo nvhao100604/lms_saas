@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   Box,
@@ -12,6 +13,11 @@ import {
   Skeleton,
   Alert,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  CircularProgress,
+  Snackbar,
 } from "@mui/material";
 import MenuBookRoundedIcon from "@mui/icons-material/MenuBookRounded";
 import GroupsRoundedIcon from "@mui/icons-material/GroupsRounded";
@@ -26,11 +32,15 @@ import WorkspacePremiumRoundedIcon from "@mui/icons-material/WorkspacePremiumRou
 import RoomRoundedIcon from "@mui/icons-material/RoomRounded";
 import AccessTimeRoundedIcon from "@mui/icons-material/AccessTimeRounded";
 import WarningAmberRoundedIcon from "@mui/icons-material/WarningAmberRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 
 import { ROUTES } from "@/constants/routes";
 import { useAppSelector } from "@/store/hooks";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
 import { useDashboard } from "@/hooks/useDashboard";
+import { dashboardService } from "@/services/dashboardService";
+import type { SubscriptionPlanItemResponse } from "@/types/dashboard";
 
 export interface DashboardViewProps {
   tenantSlug: string;
@@ -42,6 +52,73 @@ export function DashboardView({ tenantSlug }: DashboardViewProps) {
   const { isCenterAdmin, isTeacher } = useCurrentRole();
   const { dashboard, isLoading, isError, error, isValidating, mutate } =
     useDashboard(tenantSlug);
+
+  // Subscription Plan Dialog & Mutate state
+  const [openPlanDialog, setOpenPlanDialog] = useState(false);
+  const [plans, setPlans] = useState<SubscriptionPlanItemResponse[]>([]);
+  const [loadingPlans, setLoadingPlans] = useState(false);
+  const [changingPlanId, setChangingPlanId] = useState<string | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: "success" | "error";
+  }>({
+    open: false,
+    message: "",
+    severity: "success",
+  });
+
+  const handleOpenPlanDialog = async () => {
+    setOpenPlanDialog(true);
+    setPlanError(null);
+    setLoadingPlans(true);
+    try {
+      const data = await dashboardService.getSubscriptionPlans();
+      setPlans(data);
+    } catch (err: unknown) {
+      const errorMsg =
+        err instanceof Error ? err.message : t.courses.defaultErrorMessage;
+      setPlanError(errorMsg);
+    } finally {
+      setLoadingPlans(false);
+    }
+  };
+
+  const handleClosePlanDialog = () => {
+    if (!changingPlanId) {
+      setOpenPlanDialog(false);
+      setPlanError(null);
+    }
+  };
+
+  const handleChangePlan = async (planId: string) => {
+    setChangingPlanId(planId);
+    setPlanError(null);
+    try {
+      await dashboardService.changeSubscriptionPlan({ planId });
+      setSnackbar({
+        open: true,
+        message: t.dashboard.changePlanSuccess,
+        severity: "success",
+      });
+      setOpenPlanDialog(false);
+      await mutate();
+    } catch (err: unknown) {
+      interface AxiosErrorResponse {
+        response?: { data?: { message?: string } };
+        message?: string;
+      }
+      const axiosErr = err as AxiosErrorResponse;
+      const errorMsg =
+        axiosErr.response?.data?.message ||
+        axiosErr.message ||
+        t.dashboard.changePlanFailed;
+      setPlanError(errorMsg);
+    } finally {
+      setChangingPlanId(null);
+    }
+  };
 
   // Format tenant display name from slug (e.g. "trung-tam-anh-ngu" -> "Trung Tam Anh Ngu")
   const formattedTenantTitle = tenantSlug
@@ -500,12 +577,29 @@ export function DashboardView({ tenantSlug }: DashboardViewProps) {
               </Typography>
             </Box>
 
-            {!isLoading && (
-              <Typography variant="subtitle2" sx={{ color: "text.secondary", fontWeight: 600 }}>
-                {dashboard?.quota.monthlyPrice.toLocaleString("vi-VN")}{" "}
-                {t.dashboard.currencyVndSuffix}
-              </Typography>
-            )}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
+              {!isLoading && (
+                <Typography variant="subtitle2" sx={{ color: "text.secondary", fontWeight: 600 }}>
+                  {dashboard?.quota.monthlyPrice.toLocaleString("vi-VN")}{" "}
+                  {t.dashboard.currencyVndSuffix}
+                </Typography>
+              )}
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<WorkspacePremiumRoundedIcon />}
+                onClick={handleOpenPlanDialog}
+                sx={{
+                  borderRadius: 2,
+                  textTransform: "none",
+                  fontWeight: 700,
+                  borderColor: "primary.main",
+                  "&:hover": { bgcolor: "primary.50" },
+                }}
+              >
+                {t.dashboard.upgradePlanBtn}
+              </Button>
+            </Box>
           </Box>
 
           <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 3 }}>
@@ -850,6 +944,147 @@ export function DashboardView({ tenantSlug }: DashboardViewProps) {
           </Button>
         </Box>
       </Box>
+
+      {/* 6. Upgrade / Change Subscription Plan Dialog */}
+      <Dialog
+        open={openPlanDialog}
+        onClose={handleClosePlanDialog}
+        maxWidth="md"
+        fullWidth
+        slotProps={{
+          paper: {
+            sx: { borderRadius: 3, p: 1 },
+          },
+        }}
+      >
+        <DialogTitle sx={{ m: 0, p: 2, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 800 }}>
+              {t.dashboard.planDialogTitle}
+            </Typography>
+            <Typography variant="body2" sx={{ color: "text.secondary", mt: 0.5 }}>
+              {t.dashboard.planDialogDesc}
+            </Typography>
+          </Box>
+          <IconButton onClick={handleClosePlanDialog} disabled={!!changingPlanId}>
+            <CloseRoundedIcon />
+          </IconButton>
+        </DialogTitle>
+
+        <DialogContent dividers sx={{ p: 3 }}>
+          {planError && (
+            <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
+              {planError}
+            </Alert>
+          )}
+
+          {loadingPlans ? (
+            <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", py: 8 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" },
+                gap: 2.5,
+              }}
+            >
+              {plans.map((p) => (
+                <Paper
+                  key={p.id}
+                  variant="outlined"
+                  sx={{
+                    p: 2.5,
+                    borderRadius: 2.5,
+                    position: "relative",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    borderColor: p.isCurrentPlan ? "primary.main" : "divider",
+                    borderWidth: p.isCurrentPlan ? 2 : 1,
+                    bgcolor: p.isCurrentPlan ? "primary.50" : "background.paper",
+                    transition: "transform 0.2s, box-shadow 0.2s",
+                    "&:hover": {
+                      boxShadow: (theme) => theme.shadows[4],
+                    },
+                  }}
+                >
+                  <Box>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 800, color: "text.primary" }}>
+                        {p.name}
+                      </Typography>
+                      {p.isCurrentPlan && (
+                        <Chip
+                          size="small"
+                          label={t.dashboard.currentPlanBadge}
+                          color="success"
+                          sx={{ fontWeight: 700, borderRadius: 1.5 }}
+                        />
+                      )}
+                    </Box>
+
+                    <Box sx={{ my: 2 }}>
+                      <Typography variant="h5" sx={{ fontWeight: 800, color: "primary.main" }}>
+                        {p.monthlyPrice.toLocaleString("vi-VN")}{" "}
+                        <Typography component="span" variant="caption" sx={{ color: "text.secondary", fontWeight: 600 }}>
+                          đ / {t.dashboard.planPerMonth}
+                        </Typography>
+                      </Typography>
+                    </Box>
+
+                    <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, my: 2 }}>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <CheckCircleRoundedIcon fontSize="small" color="primary" />
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {p.maxClassesLimit} {t.dashboard.planMaxClasses}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <CheckCircleRoundedIcon fontSize="small" color="primary" />
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {p.maxStudentsLimit} {t.dashboard.planMaxStudents}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Box>
+
+                  <Button
+                    fullWidth
+                    variant={p.isCurrentPlan ? "outlined" : "contained"}
+                    disabled={p.isCurrentPlan || !!changingPlanId}
+                    onClick={() => handleChangePlan(p.id)}
+                    sx={{ mt: 2, borderRadius: 2, textTransform: "none", fontWeight: 700 }}
+                  >
+                    {changingPlanId === p.id
+                      ? t.dashboard.selectingPlanBtn
+                      : p.isCurrentPlan
+                      ? t.dashboard.currentPlanBadge
+                      : t.dashboard.selectPlanBtn}
+                  </Button>
+                </Paper>
+              ))}
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 7. Snackbar Toast Notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+      >
+        <Alert
+          severity={snackbar.severity}
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          sx={{ borderRadius: 2 }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

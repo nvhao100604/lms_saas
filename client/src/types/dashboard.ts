@@ -29,3 +29,16 @@ export interface DashboardSummaryResponse {
   quota: SubscriptionQuotaResponse;
   todaySessions: TodaySessionItemResponse[];
 }
+
+export interface SubscriptionPlanItemResponse {
+  id: string;
+  name: string;
+  monthlyPrice: number;
+  maxClassesLimit: number;
+  maxStudentsLimit: number;
+  isCurrentPlan: boolean;
+}
+
+export interface ChangeSubscriptionPlanRequest {
+  planId: string;
+}

@@ -64,6 +64,8 @@ export const ROUTES = {
     },
     DASHBOARD: {
       ROOT: "/api/dashboard",
+      PLANS: "/api/dashboard/plans",
+      SUBSCRIPTION: "/api/dashboard/subscription",
     },
   },
 } as const;
