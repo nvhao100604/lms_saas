@@ -313,4 +313,215 @@ public class DashboardControllerTests
             Assert.Equal(5, response.Data.TodaySessions[4].SessionNumber);
         }
     }
+
+    [Fact]
+    public async Task GetSubscriptionPlans_ReturnsAllActivePlans_WithCurrentPlanFlagged()
+    {
+        var tenantId = Guid.NewGuid();
+        var (context, tenantService) = CreateInMemoryContext(Guid.NewGuid().ToString(), tenantId);
+        using (context)
+        {
+            var freePlan = new SubscriptionPlan
+            {
+                Id = Guid.NewGuid(),
+                Code = "FREE",
+                Name = "Gói Miễn Phí",
+                Price = 0m,
+                MaxClassesLimit = 3,
+                MaxStudentsLimit = 20,
+                IsActive = true
+            };
+            var proPlan = new SubscriptionPlan
+            {
+                Id = Guid.NewGuid(),
+                Code = "PRO",
+                Name = "Gói Chuyên Nghiệp",
+                Price = 500000m,
+                MaxClassesLimit = 10,
+                MaxStudentsLimit = 100,
+                IsActive = true
+            };
+            var inactivePlan = new SubscriptionPlan
+            {
+                Id = Guid.NewGuid(),
+                Code = "OLD",
+                Name = "Gói Cũ",
+                Price = 100000m,
+                MaxClassesLimit = 1,
+                MaxStudentsLimit = 5,
+                IsActive = false
+            };
+
+            context.SubscriptionPlans.AddRange(freePlan, proPlan, inactivePlan);
+            var tenant = new Tenant
+            {
+                Id = tenantId,
+                Name = "Test Center",
+                Slug = "test-center",
+                SubscriptionPlanId = freePlan.Id
+            };
+            context.Tenants.Add(tenant);
+            await context.SaveChangesAsync();
+
+            var controller = new DashboardController(context, tenantService);
+            SetUserContext(controller, Guid.NewGuid(), "CenterAdmin");
+
+            var actionResult = await controller.GetSubscriptionPlans();
+            var okResult = Assert.IsType<OkObjectResult>(actionResult);
+            var response = Assert.IsType<ApiResponse<IReadOnlyList<SubscriptionPlanItemResponse>>>(okResult.Value);
+
+            Assert.NotNull(response.Data);
+            Assert.Equal(2, response.Data.Count);
+
+            var freeItem = response.Data.First(p => p.Id == freePlan.Id);
+            Assert.True(freeItem.IsCurrentPlan);
+
+            var proItem = response.Data.First(p => p.Id == proPlan.Id);
+            Assert.False(proItem.IsCurrentPlan);
+        }
+    }
+
+    [Fact]
+    public async Task ChangeSubscriptionPlan_WhenValid_ShouldUpdateTenantPlanAndReturnQuota()
+    {
+        var tenantId = Guid.NewGuid();
+        var (context, tenantService) = CreateInMemoryContext(Guid.NewGuid().ToString(), tenantId);
+        using (context)
+        {
+            var freePlan = new SubscriptionPlan
+            {
+                Id = Guid.NewGuid(),
+                Code = "FREE",
+                Name = "Gói Miễn Phí",
+                Price = 0m,
+                MaxClassesLimit = 3,
+                MaxStudentsLimit = 20,
+                IsActive = true
+            };
+            var proPlan = new SubscriptionPlan
+            {
+                Id = Guid.NewGuid(),
+                Code = "PRO",
+                Name = "Gói Chuyên Nghiệp",
+                Price = 500000m,
+                MaxClassesLimit = 10,
+                MaxStudentsLimit = 100,
+                IsActive = true
+            };
+            context.SubscriptionPlans.AddRange(freePlan, proPlan);
+
+            var tenant = new Tenant
+            {
+                Id = tenantId,
+                Name = "Test Center",
+                Slug = "test-center",
+                SubscriptionPlanId = freePlan.Id
+            };
+            context.Tenants.Add(tenant);
+
+            // Add 1 class and 1 student (well within pro limits)
+            context.Classes.Add(new Class
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                Name = "Demo Class",
+                Status = ClassStatus.Ongoing
+            });
+            context.TenantMembers.Add(new TenantMember
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId,
+                UserId = Guid.NewGuid(),
+                Role = RoleInTenant.Student,
+                IsActive = true
+            });
+            await context.SaveChangesAsync();
+
+            var controller = new DashboardController(context, tenantService);
+            SetUserContext(controller, Guid.NewGuid(), "CenterAdmin");
+
+            var actionResult = await controller.ChangeSubscriptionPlan(new ChangeSubscriptionPlanRequest { PlanId = proPlan.Id });
+            var okResult = Assert.IsType<OkObjectResult>(actionResult);
+            var response = Assert.IsType<ApiResponse<SubscriptionQuotaResponse>>(okResult.Value);
+
+            Assert.True(response.Success);
+            Assert.NotNull(response.Data);
+            Assert.Equal("Gói Chuyên Nghiệp", response.Data.PlanName);
+            Assert.Equal(10, response.Data.MaxClassesLimit);
+            Assert.Equal(100, response.Data.MaxStudentsLimit);
+            Assert.Equal(1, response.Data.CurrentClassesCount);
+            Assert.Equal(1, response.Data.CurrentStudentsCount);
+
+            // Verify in DB
+            var updatedTenant = await context.Tenants.IgnoreQueryFilters().FirstAsync(t => t.Id == tenantId);
+            Assert.Equal(proPlan.Id, updatedTenant.SubscriptionPlanId);
+        }
+    }
+
+    [Fact]
+    public async Task ChangeSubscriptionPlan_WhenClassesOrStudentsExceedLimits_ShouldReturnBadRequest()
+    {
+        var tenantId = Guid.NewGuid();
+        var (context, tenantService) = CreateInMemoryContext(Guid.NewGuid().ToString(), tenantId);
+        using (context)
+        {
+            var freePlan = new SubscriptionPlan
+            {
+                Id = Guid.NewGuid(),
+                Code = "FREE",
+                Name = "Gói Miễn Phí",
+                Price = 0m,
+                MaxClassesLimit = 3,
+                MaxStudentsLimit = 5,
+                IsActive = true
+            };
+            var proPlan = new SubscriptionPlan
+            {
+                Id = Guid.NewGuid(),
+                Code = "PRO",
+                Name = "Gói Chuyên Nghiệp",
+                Price = 500000m,
+                MaxClassesLimit = 10,
+                MaxStudentsLimit = 100,
+                IsActive = true
+            };
+            context.SubscriptionPlans.AddRange(freePlan, proPlan);
+
+            var tenant = new Tenant
+            {
+                Id = tenantId,
+                Name = "Test Center",
+                Slug = "test-center",
+                SubscriptionPlanId = proPlan.Id
+            };
+            context.Tenants.Add(tenant);
+
+            // Add 4 ongoing classes (exceeds freePlan's MaxClassesLimit = 3)
+            for (int i = 0; i < 4; i++)
+            {
+                context.Classes.Add(new Class
+                {
+                    Id = Guid.NewGuid(),
+                    TenantId = tenantId,
+                    Name = $"Class {i}",
+                    Status = ClassStatus.Ongoing
+                });
+            }
+            await context.SaveChangesAsync();
+
+            var controller = new DashboardController(context, tenantService);
+            SetUserContext(controller, Guid.NewGuid(), "CenterAdmin");
+
+            var actionResult = await controller.ChangeSubscriptionPlan(new ChangeSubscriptionPlanRequest { PlanId = freePlan.Id });
+            var badRequestResult = Assert.IsType<BadRequestObjectResult>(actionResult);
+            var response = Assert.IsType<ApiResponse<SubscriptionQuotaResponse>>(badRequestResult.Value);
+
+            Assert.False(response.Success);
+            Assert.Contains("vượt quá giới hạn", response.Message);
+
+            // Verify DB unchanged
+            var tenantInDb = await context.Tenants.IgnoreQueryFilters().FirstAsync(t => t.Id == tenantId);
+            Assert.Equal(proPlan.Id, tenantInDb.SubscriptionPlanId);
+        }
+    }
 }

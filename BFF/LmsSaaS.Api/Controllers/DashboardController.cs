@@ -191,4 +191,122 @@ public class DashboardController : ControllerBase
             Data = response
         });
     }
+
+    [HttpGet("plans")]
+    [Authorize(Roles = "CenterAdmin")]
+    public async Task<IActionResult> GetSubscriptionPlans()
+    {
+        var tenantId = currentTenantService.TenantId ?? dbContext.CurrentTenantId;
+        if (!tenantId.HasValue)
+        {
+            return Unauthorized(new ApiResponse<IReadOnlyList<SubscriptionPlanItemResponse>>
+            {
+                Success = false,
+                Message = "Không xác định được ngữ cảnh trung tâm."
+            });
+        }
+
+        var tenant = await dbContext.Tenants
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.Id == tenantId.Value);
+
+        var currentPlanId = tenant?.SubscriptionPlanId;
+
+        var plans = await dbContext.SubscriptionPlans
+            .IgnoreQueryFilters()
+            .Where(p => p.IsActive)
+            .OrderBy(p => p.Price)
+            .Select(p => new SubscriptionPlanItemResponse(
+                p.Id,
+                p.Name,
+                p.Price,
+                p.MaxClassesLimit,
+                p.MaxStudentsLimit,
+                p.Id == currentPlanId
+            ))
+            .ToListAsync();
+
+        return Ok(new ApiResponse<IReadOnlyList<SubscriptionPlanItemResponse>>
+        {
+            Success = true,
+            Message = "Lấy danh sách gói cước thành công.",
+            Data = plans
+        });
+    }
+
+    [HttpPatch("subscription")]
+    [Authorize(Roles = "CenterAdmin")]
+    public async Task<IActionResult> ChangeSubscriptionPlan([FromBody] ChangeSubscriptionPlanRequest request)
+    {
+        var tenantId = currentTenantService.TenantId ?? dbContext.CurrentTenantId;
+        if (!tenantId.HasValue)
+        {
+            return Unauthorized(new ApiResponse<SubscriptionQuotaResponse>
+            {
+                Success = false,
+                Message = "Không xác định được ngữ cảnh trung tâm."
+            });
+        }
+
+        var newPlan = await dbContext.SubscriptionPlans
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(p => p.Id == request.PlanId && p.IsActive);
+
+        if (newPlan == null)
+        {
+            return NotFound(new ApiResponse<SubscriptionQuotaResponse>
+            {
+                Success = false,
+                Message = "Gói cước không tồn tại hoặc đã ngừng cung cấp."
+            });
+        }
+
+        // Safety Downgrade Check
+        var currentClassesCount = await dbContext.Classes
+            .CountAsync(c => c.Status == ClassStatus.Upcoming || c.Status == ClassStatus.Ongoing);
+
+        var currentStudentsCount = await dbContext.TenantMembers
+            .CountAsync(tm => tm.Role == RoleInTenant.Student && tm.IsActive);
+
+        if (currentClassesCount > newPlan.MaxClassesLimit || currentStudentsCount > newPlan.MaxStudentsLimit)
+        {
+            return BadRequest(new ApiResponse<SubscriptionQuotaResponse>
+            {
+                Success = false,
+                Message = $"Không thể chuyển sang gói {newPlan.Name} vì số lượng lớp học hoặc học viên hiện tại đang vượt quá giới hạn của gói này."
+            });
+        }
+
+        var tenant = await dbContext.Tenants
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.Id == tenantId.Value);
+
+        if (tenant == null)
+        {
+            return NotFound(new ApiResponse<SubscriptionQuotaResponse>
+            {
+                Success = false,
+                Message = "Không tìm thấy thông tin trung tâm."
+            });
+        }
+
+        tenant.SubscriptionPlanId = newPlan.Id;
+        await dbContext.SaveChangesAsync();
+
+        var quota = new SubscriptionQuotaResponse(
+            newPlan.Name,
+            newPlan.Price,
+            currentClassesCount,
+            newPlan.MaxClassesLimit,
+            currentStudentsCount,
+            newPlan.MaxStudentsLimit
+        );
+
+        return Ok(new ApiResponse<SubscriptionQuotaResponse>
+        {
+            Success = true,
+            Message = "Đổi gói cước thành công.",
+            Data = quota
+        });
+    }
 }
