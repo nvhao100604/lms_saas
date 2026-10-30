@@ -48,9 +48,10 @@ namespace LmsSaaS.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ClassSessionId");
-
                     b.HasIndex("StudentId");
+
+                    b.HasIndex("ClassSessionId", "StudentId")
+                        .IsUnique();
 
                     b.ToTable("Attendances");
                 });
@@ -241,6 +242,50 @@ namespace LmsSaaS.Infrastructure.Migrations
                     b.ToTable("Enrollments");
                 });
 
+            modelBuilder.Entity("LmsSaaS.Core.Entities.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActionUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("RecipientUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipientUserId");
+
+                    b.HasIndex("TenantId", "RecipientUserId", "IsRead", "CreatedAt");
+
+                    b.ToTable("notifications", (string)null);
+                });
+
             modelBuilder.Entity("LmsSaaS.Core.Entities.Quiz", b =>
                 {
                     b.Property<Guid>("Id")
@@ -372,6 +417,9 @@ namespace LmsSaaS.Infrastructure.Migrations
                     b.Property<int>("MaxClassesLimit")
                         .HasColumnType("integer");
 
+                    b.Property<int>("MaxStudentsLimit")
+                        .HasColumnType("integer");
+
                     b.Property<int>("MaxStudentsPerClass")
                         .HasColumnType("integer");
 
@@ -429,6 +477,9 @@ namespace LmsSaaS.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset>("JoinedAt")
                         .HasColumnType("timestamp with time zone");
@@ -589,6 +640,25 @@ namespace LmsSaaS.Infrastructure.Migrations
                     b.Navigation("Student");
                 });
 
+            modelBuilder.Entity("LmsSaaS.Core.Entities.Notification", b =>
+                {
+                    b.HasOne("LmsSaaS.Core.Entities.User", "RecipientUser")
+                        .WithMany("Notifications")
+                        .HasForeignKey("RecipientUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("LmsSaaS.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RecipientUser");
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("LmsSaaS.Core.Entities.Quiz", b =>
                 {
                     b.HasOne("LmsSaaS.Core.Entities.Class", "Class")
@@ -711,6 +781,8 @@ namespace LmsSaaS.Infrastructure.Migrations
                     b.Navigation("ClassesAsTeacher");
 
                     b.Navigation("Enrollments");
+
+                    b.Navigation("Notifications");
 
                     b.Navigation("QuizSubmissions");
 

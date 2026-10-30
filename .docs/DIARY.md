@@ -1195,6 +1195,8 @@ Tài liệu này ghi lại toàn bộ lịch sử các phiên làm việc, nhữ
   - Ngăn ngừa tình trạng trung tâm đào tạo rơi vào trạng thái không nhất quán dữ liệu (inconsistent state) khi hạ gói cước về mức thấp hơn số lượng tài nguyên đang vận hành thực tế. Việc kiểm tra số lượng lớp học đang vận hành và học viên hoạt động bảo vệ cả trung tâm đào tạo lẫn nền tảng SaaS khỏi tranh chấp hạn ngạch.
 * **Tối ưu trải nghiệm chuyển gói (Optimistic Dashboard Invalidation)**:
   - Khi hoàn tất chuyển gói cước, việc gọi `mutate()` từ SWR đảm bảo cả 4 thẻ KPI, thanh hạn ngạch gói cước, giá hàng tháng và badge gói cước trên giao diện được cập nhật đồng bộ ngay lập tức mà không cần người dùng tải lại trang.
+* **Tự động áp dụng Migration (Auto-Migration on Startup)**:
+  - Sinh migration `AddMaxStudentsLimitAndMemberIsActive` bổ sung cột `MaxStudentsLimit` (gói cước), `IsActive` (thành viên), bảng `notifications` và ràng buộc duy nhất trong sổ điểm danh. Đồng thời kích hoạt `await dbContext.Database.MigrateAsync()` trong `Program.cs` trước khi nạp Seed Data, giúp hệ thống tự động đồng bộ lược đồ cơ sở dữ liệu Supabase PostgreSQL mà không bị lỗi thiếu cột khi khởi chạy API.
 
 
 

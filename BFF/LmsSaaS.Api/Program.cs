@@ -2,6 +2,7 @@ using LmsSaaS.Api.Middlewares;
 using LmsSaaS.Api.OpenApi;
 using LmsSaaS.Infrastructure;
 using LmsSaaS.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,6 +48,7 @@ if (app.Environment.IsDevelopment())
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await dbContext.Database.MigrateAsync();
     await DbSeeder.SeedAsync(dbContext);
 }
 
@@ -64,3 +66,5 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+
