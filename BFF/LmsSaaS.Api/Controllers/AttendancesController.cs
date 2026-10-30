@@ -7,7 +7,9 @@ using LmsSaaS.Core.Common;
 using LmsSaaS.Core.DTOs.Attendances;
 using LmsSaaS.Core.Entities;
 using LmsSaaS.Core.Enums;
+using LmsSaaS.Core.Events;
 using LmsSaaS.Infrastructure.Persistence;
+using MassTransit;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -17,8 +19,21 @@ namespace LmsSaaS.Api.Controllers;
 [ApiController]
 [Route("api/sessions/{sessionId:guid}/attendances")]
 [Authorize(Roles = "CenterAdmin,Teacher")]
-public class AttendancesController(AppDbContext dbContext) : ControllerBase
+public class AttendancesController : ControllerBase
 {
+    private readonly AppDbContext dbContext;
+    private readonly IPublishEndpoint? publishEndpoint;
+
+    public AttendancesController(AppDbContext dbContext, IPublishEndpoint publishEndpoint)
+    {
+        this.dbContext = dbContext;
+        this.publishEndpoint = publishEndpoint;
+    }
+
+    public AttendancesController(AppDbContext dbContext) : this(dbContext, null!)
+    {
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetSessionAttendances(Guid sessionId)
     {
@@ -176,15 +191,27 @@ public class AttendancesController(AppDbContext dbContext) : ControllerBase
                 .Where(a => a.ClassSessionId == sessionId)
                 .ToDictionaryAsync(a => a.StudentId);
 
+            var newlyAbsentStudentIds = new List<Guid>();
+
             foreach (var item in request.Attendances)
             {
                 if (existingAttendances.TryGetValue(item.StudentId, out var existing))
                 {
+                    if (item.Status == AttendanceStatus.Absent && existing.Status != AttendanceStatus.Absent)
+                    {
+                        newlyAbsentStudentIds.Add(item.StudentId);
+                    }
+
                     existing.Status = item.Status;
                     existing.TeacherNote = item.Note?.Trim();
                 }
                 else
                 {
+                    if (item.Status == AttendanceStatus.Absent)
+                    {
+                        newlyAbsentStudentIds.Add(item.StudentId);
+                    }
+
                     dbContext.Attendances.Add(new Attendance
                     {
                         Id = Guid.NewGuid(),
@@ -202,6 +229,29 @@ public class AttendancesController(AppDbContext dbContext) : ControllerBase
             if (transaction != null)
             {
                 await transaction.CommitAsync();
+            }
+
+            // Publish sự kiện vắng mặt nếu có
+            if (publishEndpoint != null && newlyAbsentStudentIds.Count > 0)
+            {
+                var tenant = await dbContext.Tenants
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(t => t.Id == session.TenantId);
+                var tenantSlug = tenant?.Slug ?? string.Empty;
+
+                foreach (var studentId in newlyAbsentStudentIds)
+                {
+                    await publishEndpoint.Publish(new StudentAbsentIntegrationEvent(
+                        session.TenantId,
+                        tenantSlug,
+                        session.ClassId,
+                        session.Class.Name,
+                        session.Id,
+                        session.SessionNumber,
+                        studentId,
+                        session.StartTime
+                    ));
+                }
             }
 
             return Ok(new ApiResponse<bool>

@@ -135,4 +135,75 @@ public class AttendanceControllerTests
             Assert.Contains(attendances, a => a.StudentId == s2.Id && a.Status == AttendanceStatus.Absent && a.TeacherNote == "Nghỉ không phép");
         }
     }
+
+    [Fact]
+    public async Task SaveSessionAttendances_WhenStudentMarkedAbsent_ShouldPublishStudentAbsentIntegrationEvent()
+    {
+        var tenantId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        var tenantService = new CurrentTenantService();
+        tenantService.SetTenantContext(tenantId, "test-center");
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        using var context = new AppDbContext(options, tenantService);
+        var publishEndpoint = new Mocks.TestPublishEndpoint();
+        var controller = new AttendancesController(context, publishEndpoint);
+
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, teacherId.ToString()),
+            new(ClaimTypes.Role, "Teacher"),
+            new("tenant_id", tenantId.ToString())
+        };
+        var identity = new ClaimsIdentity(claims, "TestAuth");
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(identity) }
+        };
+
+        var tenant = new Tenant { Id = tenantId, Name = "Test Center", Slug = "test-center" };
+        var course = new Course { Id = Guid.NewGuid(), TenantId = tenantId, Title = "C# Core", Tenant = tenant };
+        var cls = new Class { Id = Guid.NewGuid(), TenantId = tenantId, CourseId = course.Id, TeacherId = teacherId, Name = "C# Lớp 1", Status = ClassStatus.Ongoing, Tenant = tenant };
+        var session = new ClassSession { Id = Guid.NewGuid(), TenantId = tenantId, ClassId = cls.Id, SessionNumber = 1, StartTime = DateTimeOffset.UtcNow, EndTime = DateTimeOffset.UtcNow.AddHours(2), Class = cls };
+        var student = new User { Id = Guid.NewGuid(), Email = "student@test.com", FullName = "Student Absent" };
+
+        context.Tenants.Add(tenant);
+        context.Courses.Add(course);
+        context.Classes.Add(cls);
+        context.ClassSessions.Add(session);
+        context.Users.Add(student);
+        await context.SaveChangesAsync();
+
+        var request = new SaveSessionAttendanceRequest
+        {
+            Topic = "Session 1",
+            Attendances = new List<AttendanceItemRequest>
+            {
+                new() { StudentId = student.Id, Status = AttendanceStatus.Absent, Note = "Vắng không phép" }
+            }
+        };
+
+        // Act
+        var actionResult = await controller.SaveSessionAttendances(session.Id, request);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(actionResult);
+        var response = Assert.IsType<ApiResponse<bool>>(okResult.Value);
+        Assert.True(response.Success);
+
+        var publishedEvents = publishEndpoint.PublishedMessages
+            .OfType<LmsSaaS.Core.Events.StudentAbsentIntegrationEvent>()
+            .ToList();
+
+        Assert.Single(publishedEvents);
+        var evt = publishedEvents[0];
+        Assert.Equal(tenantId, evt.TenantId);
+        Assert.Equal("test-center", evt.TenantSlug);
+        Assert.Equal(cls.Id, evt.ClassId);
+        Assert.Equal(student.Id, evt.StudentId);
+        Assert.Equal(session.Id, evt.SessionId);
+    }
 }
