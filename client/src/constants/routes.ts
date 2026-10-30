@@ -62,5 +62,8 @@ export const ROUTES = {
       MARK_READ: (id: string) => `/api/notifications/${id}/read`,
       MARK_ALL_READ: "/api/notifications/read-all",
     },
+    DASHBOARD: {
+      ROOT: "/api/dashboard",
+    },
   },
 } as const;
