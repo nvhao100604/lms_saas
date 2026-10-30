@@ -29,11 +29,6 @@ public class DashboardController : ControllerBase
         this.currentTenantService = currentTenantService;
     }
 
-    public DashboardController(AppDbContext dbContext)
-        : this(dbContext, new CurrentTenantService())
-    {
-    }
-
     private Guid? CurrentUserId
     {
         get

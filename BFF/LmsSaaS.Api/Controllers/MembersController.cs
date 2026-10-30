@@ -29,11 +29,6 @@ public class MembersController : ControllerBase
         this.currentTenantService = currentTenantService;
     }
 
-    public MembersController(AppDbContext dbContext)
-        : this(dbContext, new CurrentTenantService())
-    {
-    }
-
     private Guid? CurrentUserId
     {
         get
