@@ -1151,6 +1151,52 @@ Tài liệu này ghi lại toàn bộ lịch sử các phiên làm việc, nhữ
 * **Cảnh báo hạn ngạch trực quan (Color-shifting Progress Bar)**:
   - Thanh hạn ngạch gói cước SaaS tự động chuyển màu dựa trên tỷ lệ sử dụng ($> 85\%$ đỏ, $70-85\%$ cam/vàng, $\le 70\%$ xanh), giúp người quản trị trung tâm nhận biết ngay lập tức nhu cầu nâng cấp gói cước mà không cần đọc những con số khô khan.
 
+---
+
+## [2026-10-30] Triển khai Tính năng Đổi / Nâng cấp gói cước SaaS & Kiểm tra An toàn Hạ gói
+
+### Mục tiêu trong phiên làm việc
+* Bổ sung tính năng đổi / nâng cấp gói cước dịch vụ SaaS trực tiếp trên thẻ Hạn ngạch của trang Dashboard dành cho Quản trị viên (`CenterAdmin`).
+* Tầng .NET 10 BFF: Xây dựng CQS Models (`SubscriptionPlanItemResponse`, `ChangeSubscriptionPlanRequest`), API `GET /api/dashboard/plans` và `PATCH /api/dashboard/subscription`.
+* Thực thi quy tắc nghiệp vụ cốt lõi **Safety Downgrade Check**: Chặn hạ gói khi số lớp hoặc học viên đang hoạt động vượt quá giới hạn gói cước mới (`400 Bad Request`).
+* Tầng Client (Next.js 16, MUI v9, SWR, i18n): Bổ sung route, types, service, nút Nâng cấp gói, Dialog so sánh các gói cước 3 cột dạng thẻ Card, xử lý đổi gói cước, thông báo lỗi ngay trong dialog và làm mới Dashboard tức thì qua `mutate()`.
+* Đạt 100% test pass ở backend (.NET 10 xUnit: 70/70 tests) và 0 lỗi TypeScript / Next.js production build.
+
+### Các công việc đã thực hiện
+1. **CQS Models & DashboardController tầng BFF**:
+   - `BFF/LmsSaaS.Core/DTOs/Dashboard/SubscriptionPlanItemResponse.cs` (record chứa `Id`, `Name`, `MonthlyPrice`, `MaxClassesLimit`, `MaxStudentsLimit`, `IsCurrentPlan`).
+   - `BFF/LmsSaaS.Core/DTOs/Dashboard/ChangeSubscriptionPlanRequest.cs` (class chứa `[Required] PlanId`).
+   - `BFF/LmsSaaS.Api/Controllers/DashboardController.cs`:
+     + `GET /api/dashboard/plans` (`[Authorize(Roles = "CenterAdmin")]`): Trả về danh sách gói cước kích hoạt, sắp xếp tăng dần theo giá và gắn cờ `IsCurrentPlan`.
+     + `PATCH /api/dashboard/subscription` (`[Authorize(Roles = "CenterAdmin")]`): Đếm số lớp (`Upcoming` hoặc `Ongoing`) và số học viên hoạt động (`Role == Student && IsActive`). Nếu vượt quá `MaxClassesLimit` hoặc `MaxStudentsLimit` của gói mới, từ chối với mã 400 và thông báo thân thiện; nếu hợp lệ, cập nhật `tenant.SubscriptionPlanId` và trả về `SubscriptionQuotaResponse` mới nhất.
+2. **Kiểm thử tự động Backend**:
+   - `BFF/LmsSaaS.UnitTests/Tests/DashboardControllerTests.cs`: Bổ sung 3 unit tests:
+     + `GetSubscriptionPlans_ReturnsAllActivePlans_WithCurrentPlanFlagged`: Đảm bảo chỉ trả về gói active và gắn đúng cờ gói hiện tại.
+     + `ChangeSubscriptionPlan_WhenValid_ShouldUpdateTenantPlanAndReturnQuota`: Nâng cấp gói thành công và cập nhật đúng DB.
+     + `ChangeSubscriptionPlan_WhenClassesOrStudentsExceedLimits_ShouldReturnBadRequest`: Chặn hạ gói khi số lượng lớp học vượt trần.
+   - `dotnet test BFF/LmsSaaS.slnx`: **70/70 passed 100%**.
+3. **Tầng Frontend (Client)**:
+   - `client/src/constants/routes.ts`: Bổ sung `ROUTES.API.DASHBOARD.PLANS` và `SUBSCRIPTION`.
+   - `client/src/types/dashboard.ts`: Định nghĩa TypeScript interfaces tương ứng tầng BFF.
+   - `client/src/services/dashboardService.ts`: Bổ sung `getSubscriptionPlans` và `changeSubscriptionPlan`.
+   - `client/src/locales/`: Bổ sung đầy đủ chuỗi song ngữ trong `types.ts`, `vi.ts` và `en.ts`.
+   - `client/src/components/dashboard/DashboardView.tsx`:
+     + Thêm nút `Đổi / Nâng cấp gói` trên thẻ Quota cho Admin.
+     + Thêm `<Dialog maxWidth="md" fullWidth>` hiển thị lưới 3 cột card so sánh các gói (Starter, Pro, Enterprise...), giá/tháng, giới hạn lớp và học viên, chip "Gói hiện tại", nút chọn gói (disable trên gói đang dùng).
+     + Xử lý lỗi hạ gói hiển thị qua `<Alert severity="error">` trực tiếp trong dialog.
+     + Đóng modal, hiển thị Toast Snackbar thành công và gọi `mutate()` cập nhật ngay lập tức giao diện Dashboard.
+4. **Kiểm tra chất lượng**:
+   - `dotnet test BFF/LmsSaaS.slnx`: **70/70 tests passed 100%**.
+   - `pnpm --dir client exec tsc --noEmit`: **0 lỗi TypeScript**.
+   - `pnpm --dir client run build`: **16/16 routes compile thành công**.
+
+### Quyết định kiến trúc & Kỹ thuật
+* **Kiểm tra tính an toàn trước khi hạ gói (Safety Downgrade Check)**:
+  - Ngăn ngừa tình trạng trung tâm đào tạo rơi vào trạng thái không nhất quán dữ liệu (inconsistent state) khi hạ gói cước về mức thấp hơn số lượng tài nguyên đang vận hành thực tế. Việc kiểm tra số lượng lớp học đang vận hành và học viên hoạt động bảo vệ cả trung tâm đào tạo lẫn nền tảng SaaS khỏi tranh chấp hạn ngạch.
+* **Tối ưu trải nghiệm chuyển gói (Optimistic Dashboard Invalidation)**:
+  - Khi hoàn tất chuyển gói cước, việc gọi `mutate()` từ SWR đảm bảo cả 4 thẻ KPI, thanh hạn ngạch gói cước, giá hàng tháng và badge gói cước trên giao diện được cập nhật đồng bộ ngay lập tức mà không cần người dùng tải lại trang.
+
+
 
 
 

@@ -8,7 +8,7 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
 
 | Trạng thái | Số lượng | Tỷ lệ |
 | :--- | :--- | :--- |
-| **Đã hoàn thành (Done)** | 27 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components, Courses & Classes BFF API, MUI Enterprise SaaS Transformation, UI/UX Overhaul & Role-Based UI Rendering, Enrollments, Schedule & Attendance Management, Event-Driven Notification System, Members & Student Management, Real-time Center Dashboard & Subscription Quota, MassTransit Student Absent Notification) |
+| **Đã hoàn thành (Done)** | 28 | 100% (BFF Auth, Refresh Token Rotation, Swagger Transformers, Next.js Silent Refresh, Axios API Layer, SWR Provider, App Shell Layout, Full i18n & Typography System, Docker BFF .NET 10, Next 16 Proxy Migration & Cache Components, Courses & Classes BFF API, MUI Enterprise SaaS Transformation, UI/UX Overhaul & Role-Based UI Rendering, Enrollments, Schedule & Attendance Management, Event-Driven Notification System, Members & Student Management, Real-time Center Dashboard & Subscription Quota, MassTransit Student Absent Notification, Self-Service SaaS Plan Upgrade & Downgrade Safety Check) |
 | **Đang tiến hành (In Progress)** | 0 | 0% |
 | **Kế hoạch sắp tới (Todo)** | 0 | - |
 
@@ -477,6 +477,30 @@ Tài liệu này theo dõi toàn bộ tiến độ tính năng của dự án **
       + Card Lịch học Hôm nay / Sắp tới: Hiển thị khung giờ, phòng học, tên lớp, môn học, giảng viên và nút bấm điều hướng nhanh tới màn hình Điểm danh / Thời khóa biểu.
       + Thao tác nhanh (Quick Actions).
     - [locales/](file:///d:/Project/SAAS/client/src/locales/): Bổ sung đầy đủ bộ khóa song ngữ trong `types.ts`, `vi.ts` và `en.ts`.
+    - `pnpm --dir client exec tsc --noEmit`: **0 lỗi TypeScript**.
+    - `pnpm --dir client run build`: **16/16 routes compile thành công**.
+* **Người thực hiện**: Senior Fullstack Architect & User.
+
+### [2026-10-30] Đổi / Nâng cấp gói cước SaaS (Subscription Plan) & Cơ chế Kiểm tra An toàn Hạ gói (Safety Downgrade Check)
+* **Mô tả**: Mở rộng phân hệ Dashboard cho phép Quản trị viên (`CenterAdmin`) xem danh sách, so sánh và đổi / nâng cấp gói cước SaaS trực tiếp trên thẻ Hạn ngạch tài nguyên; triển khai cơ chế kiểm tra an toàn chặn hạ gói khi số lớp hoặc số học viên hiện tại vượt quá trần của gói mới.
+* **Kết quả**:
+  * **1. CQS Models & API BFF (.NET 10)**:
+    - [SubscriptionPlanItemResponse.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Dashboard/SubscriptionPlanItemResponse.cs) & [ChangeSubscriptionPlanRequest.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Core/DTOs/Dashboard/ChangeSubscriptionPlanRequest.cs): Chuẩn CQS không hậu tố `Dto`.
+    - [DashboardController.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.Api/Controllers/DashboardController.cs):
+      + `GET /api/dashboard/plans` (`[Authorize(Roles = "CenterAdmin")]`): Trả về danh sách gói cước kích hoạt, sắp xếp tăng dần theo giá và gắn cờ `IsCurrentPlan`.
+      + `PATCH /api/dashboard/subscription` (`[Authorize(Roles = "CenterAdmin")]`): Thực thi **Safety Downgrade Check** — nếu số lớp học đang hoạt động hoặc số học viên hiện tại vượt quá giới hạn của gói mới, trả về `400 Bad Request` kèm thông báo rõ ràng; nếu hợp lệ, cập nhật `tenant.SubscriptionPlanId` và trả về `SubscriptionQuotaResponse` mới nhất.
+    - [DashboardControllerTests.cs](file:///d:/Project/SAAS/BFF/LmsSaaS.UnitTests/Tests/DashboardControllerTests.cs): Bổ sung 3 unit tests bao quát lấy danh sách gói cước, nâng cấp gói cước thành công và chặn hạ gói khi vi phạm giới hạn.
+    - `dotnet test BFF/LmsSaaS.slnx`: **70/70 tests passed 100%**.
+  * **2. Tầng Frontend (Next.js 16, MUI v9, SWR, i18n)**:
+    - [routes.ts](file:///d:/Project/SAAS/client/src/constants/routes.ts): Thêm `PLANS` và `SUBSCRIPTION` vào `ROUTES.API.DASHBOARD`.
+    - [types/dashboard.ts](file:///d:/Project/SAAS/client/src/types/dashboard.ts): Khai báo types chuẩn CQS.
+    - [dashboardService.ts](file:///d:/Project/SAAS/client/src/services/dashboardService.ts): Bổ sung `getSubscriptionPlans` và `changeSubscriptionPlan`.
+    - [DashboardView.tsx](file:///d:/Project/SAAS/client/src/components/dashboard/DashboardView.tsx):
+      + Thẻ Hạn ngạch gói cước bổ sung nút "Đổi / Nâng cấp gói" (`WorkspacePremiumRoundedIcon`) dành riêng cho Admin.
+      + Hộp thoại `<Dialog maxWidth="md" fullWidth>` so sánh các gói cước dạng lưới 3 cột, hiển thị chi tiết giá/tháng, giới hạn số lớp và học viên, gắn chip "Gói hiện tại", xử lý chọn gói và vô hiệu hóa nút đối với gói đang dùng.
+      + Hiển thị `<Alert severity="error">` trực tiếp bên trong Dialog khi vi phạm điều kiện hạ gói.
+      + Đóng dialog, hiển thị Toast Snackbar thành công và gọi `mutate()` làm mới tức thì dữ liệu Dashboard & Quota bar.
+    - [locales/](file:///d:/Project/SAAS/client/src/locales/): Bổ sung đầy đủ chuỗi song ngữ trong `types.ts`, `vi.ts` và `en.ts`.
     - `pnpm --dir client exec tsc --noEmit`: **0 lỗi TypeScript**.
     - `pnpm --dir client run build`: **16/16 routes compile thành công**.
 * **Người thực hiện**: Senior Fullstack Architect & User.
